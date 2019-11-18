@@ -5,7 +5,9 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <tuple>
+#include <vector>
 
 #include "visual-common.hpp"
 
@@ -14,6 +16,11 @@
 
 namespace pgw {
 namespace vk_util {
+
+inline const std::vector< const char* > device_extensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
 
 // VkInstance creation
 //-----------------------------------------------------------------------------
@@ -31,21 +38,27 @@ inline auto create_instance() {
     app_info.apiVersion = VK_API_VERSION_1_0;
 
     // Create info
-    VkInstanceCreateInfo create_info {};
-    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    create_info.pApplicationInfo = &app_info;
+    VkInstanceCreateInfo ci {};
+    ci.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    ci.pApplicationInfo = &app_info;
 
     std::uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
 
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-    create_info.enabledExtensionCount = glfwExtensionCount;
-    create_info.ppEnabledExtensionNames = glfwExtensions;
-    create_info.enabledLayerCount = 0;
+    ci.enabledExtensionCount = glfwExtensionCount;
+    ci.ppEnabledExtensionNames = glfwExtensions;
+
+    if(enable_validation_layer) {
+        ci.enabledLayerCount = default_validation_layers.size();
+        ci.ppEnabledLayerNames = default_validation_layers.data();
+    } else {
+        ci.enabledLayerCount = 0;
+    }
 
     // Create instance
-    if (vkCreateInstance(&create_info, nullptr, &instance) != VK_SUCCESS) {
+    if (vkCreateInstance(&ci, nullptr, &instance) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create instance.");
     }
 
@@ -104,15 +117,73 @@ inline auto find_queue_families(
     return indices;
 }
 
+// Swap chain support
+//-----------------------------------------------------------------------------
+struct SwapChainSupportDetails {
+    VkSurfaceCapabilitiesKHR          capabilities;
+    std::vector< VkSurfaceFormatKHR > formats;
+    std::vector< VkPresentModeKHR >   present_modes;
+};
+inline auto query_swap_chain_support(
+    VkPhysicalDevice device,
+    VkSurfaceKHR     surface
+) {
+    SwapChainSupportDetails details;
+
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+
+    {
+        std::uint32_t fm_cnt;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &fm_cnt, nullptr);
+        if(fm_cnt) {
+            details.formats.resize(fm_cnt);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &fm_cnt, details.formats.data());
+        }
+    }
+
+    {
+        std::uint32_t pm_cnt;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &pm_cnt, nullptr);
+        if(pm_cnt) {
+            details.present_modes.resize(pm_cnt);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &pm_cnt, details.present_modes.data());
+        }
+    }
+
+    return details;
+}
+
 // Physical devices
 //-----------------------------------------------------------------------------
+inline auto check_physical_device_extension_support(VkPhysicalDevice device) {
+    std::uint32_t ext_count;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, nullptr);
+    std::vector< VkExtensionProperties > available_exts(ext_count);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, available_exts.data());
+
+    std::set< std::string > unsupported_exts(device_extensions.begin(), device_extensions.end());
+    for(const auto& ext : available_exts) {
+        unsupported_exts.erase(ext.extensionName);
+    }
+
+    return unsupported_exts.empty();
+}
+
 inline auto is_physical_device_suitable(
     VkPhysicalDevice device,
     VkSurfaceKHR     surface
 ) {
-    auto indices = find_queue_families(device, surface);
+    const auto indices = find_queue_families(device, surface);
 
-    return indices.is_complete();
+    const bool extensions_supported = check_physical_device_extension_support(device);
+
+    bool swap_chain_adequate = false;
+    if(extensions_supported) {
+        const auto sc = query_swap_chain_support(device, surface);
+        swap_chain_adequate = !sc.formats.empty() && !sc.present_modes.empty();
+    }
+
+    return indices.is_complete() && extensions_supported && swap_chain_adequate;
 }
 
 inline auto pick_physical_device(
@@ -155,7 +226,7 @@ inline auto create_logical_device(
     VkQueue  graphics_queue;
     VkQueue  present_queue;
 
-    auto indices = find_queue_families(phy_dev, surface);
+    const auto indices = find_queue_families(phy_dev, surface);
 
     // Create queues
     std::vector< VkDeviceQueueCreateInfo > queue_cis;
@@ -187,7 +258,8 @@ inline auto create_logical_device(
     ci.queueCreateInfoCount = queue_cis.size();
     ci.pEnabledFeatures = &device_features;
 
-    ci.enabledExtensionCount = 0;
+    ci.enabledExtensionCount = device_extensions.size();
+    ci.ppEnabledExtensionNames = device_extensions.data();
 
     if(enable_validation_layer) {
         ci.enabledLayerCount = static_cast<std::uint32_t>(default_validation_layers.size());

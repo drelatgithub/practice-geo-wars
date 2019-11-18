@@ -23,9 +23,8 @@ constexpr bool visual_debug = true;
 constexpr const char* window_title = "Geometry Wars";
 constexpr const char* app_name     = "GeoWars";
 
-
 // Validation layer
-const std::vector< const char* > default_validation_layers {
+inline const std::vector< const char* > default_validation_layers {
     "VK_LAYER_KHRONOS_validation"
 };
 constexpr bool enable_validation_layer = visual_debug;
