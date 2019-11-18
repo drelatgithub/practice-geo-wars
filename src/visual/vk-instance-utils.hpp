@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 
@@ -51,17 +52,34 @@ inline auto create_instance() {
     return instance;
 }
 
+// Window surfaces
+//-----------------------------------------------------------------------------
+inline auto create_surface(VkInstance instance, GLFWwindow* window) {
+    VkSurfaceKHR surface;
+
+    if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create window surface.");
+    }
+
+    return surface;
+}
+
 // Queue families
 //-----------------------------------------------------------------------------
 struct QueueFamilyIndices {
     std::optional<std::uint32_t> graphics_family;
+    std::optional<std::uint32_t> present_family;
 
     // Check if all the queue families are available
     bool is_complete() const {
-        return graphics_family.has_value();
+        return graphics_family.has_value()
+            && present_family.has_value();
     }
 };
-inline auto find_queue_families(VkPhysicalDevice phy_dev) {
+inline auto find_queue_families(
+    VkPhysicalDevice phy_dev,
+    VkSurfaceKHR     surface
+) {
     QueueFamilyIndices indices;
 
     std::uint32_t qf_count = 0;
@@ -74,6 +92,13 @@ inline auto find_queue_families(VkPhysicalDevice phy_dev) {
         if(qf[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphics_family = i;
         }
+        {
+            VkBool32 present_support = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(phy_dev, i, surface, &present_support);
+            if(present_support) {
+                indices.present_family = i;
+            }
+        }
     }
 
     return indices;
@@ -81,13 +106,19 @@ inline auto find_queue_families(VkPhysicalDevice phy_dev) {
 
 // Physical devices
 //-----------------------------------------------------------------------------
-inline auto is_physical_device_suitable(VkPhysicalDevice device) {
-    auto indices = find_queue_families(device);
+inline auto is_physical_device_suitable(
+    VkPhysicalDevice device,
+    VkSurfaceKHR     surface
+) {
+    auto indices = find_queue_families(device, surface);
 
     return indices.is_complete();
 }
 
-inline auto pick_physical_device(VkInstance instance) {
+inline auto pick_physical_device(
+    VkInstance   instance,
+    VkSurfaceKHR surface
+) {
     VkPhysicalDevice physical_device = VK_NULL_HANDLE;
 
     // Find physical devices
@@ -101,7 +132,7 @@ inline auto pick_physical_device(VkInstance instance) {
     std::vector<VkPhysicalDevice> devices(device_count);
     vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
     for(const auto& d : devices) {
-        if(is_physical_device_suitable(d)) {
+        if(is_physical_device_suitable(d, surface)) {
             physical_device = d;
             break;
         }
@@ -116,19 +147,35 @@ inline auto pick_physical_device(VkInstance instance) {
 // Logical devices
 //-----------------------------------------------------------------------------
 // The logical device should be properly destroyed after use.
-inline auto create_logical_device(VkPhysicalDevice phy_dev) {
+inline auto create_logical_device(
+    VkPhysicalDevice phy_dev,
+    VkSurfaceKHR     surface
+) {
     VkDevice dev;
     VkQueue  graphics_queue;
+    VkQueue  present_queue;
 
-    auto indices = find_queue_families(phy_dev);
+    auto indices = find_queue_families(phy_dev, surface);
 
-    // Create queue
-    VkDeviceQueueCreateInfo queue_ci {};
-    queue_ci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_ci.queueFamilyIndex = indices.graphics_family.value();
-    queue_ci.queueCount = 1;
+    // Create queues
+    std::vector< VkDeviceQueueCreateInfo > queue_cis;
     float queue_priority = 1.0f;
-    queue_ci.pQueuePriorities = &queue_priority;
+    {
+        std::set< std::uint32_t > qfs {
+            indices.graphics_family.value(),
+            indices.present_family.value()
+        };
+
+        queue_cis.reserve(qfs.size());
+        for(auto qf : qfs) {
+            VkDeviceQueueCreateInfo queue_ci {};
+            queue_ci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queue_ci.queueFamilyIndex = qf;
+            queue_ci.queueCount = 1;
+            queue_ci.pQueuePriorities = &queue_priority;
+            queue_cis.push_back(queue_ci);
+        }
+    }
 
     // Device features
     VkPhysicalDeviceFeatures device_features {};
@@ -136,8 +183,8 @@ inline auto create_logical_device(VkPhysicalDevice phy_dev) {
     // Create info for logical device
     VkDeviceCreateInfo ci {};
     ci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    ci.pQueueCreateInfos = &queue_ci;
-    ci.queueCreateInfoCount = 1;
+    ci.pQueueCreateInfos = queue_cis.data();
+    ci.queueCreateInfoCount = queue_cis.size();
     ci.pEnabledFeatures = &device_features;
 
     ci.enabledExtensionCount = 0;
@@ -156,21 +203,11 @@ inline auto create_logical_device(VkPhysicalDevice phy_dev) {
 
     // Get queue handle
     vkGetDeviceQueue(dev, indices.graphics_family.value(), 0, &graphics_queue);
+    vkGetDeviceQueue(dev, indices.present_family.value(),  0, &present_queue);
 
-    return std::tuple(dev, graphics_queue);
+    return std::tuple(dev, graphics_queue, present_queue);
 }
 
-// Window surfaces
-//-----------------------------------------------------------------------------
-inline auto create_surface(VkInstance instance, GLFWwindow* window) {
-    VkSurfaceKHR surface;
-
-    if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create window surface.");
-    }
-
-    return surface;
-}
 
 } // namespace vk_util
 } // namespace pgw
