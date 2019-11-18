@@ -2,7 +2,9 @@
 #define PGW_VISUAL_VK_INSTANCE_UTILS_HPP
 
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
+#include <tuple>
 
 #include "visual-common.hpp"
 
@@ -10,12 +12,14 @@
 // configurations.
 
 namespace pgw {
-namespace vkm {
+namespace vk_util {
 
 // VkInstance creation
 //-----------------------------------------------------------------------------
 // The instance should be properly destroyed after use.
-inline void create_instance(VkInstance* p_instance) {
+inline auto create_instance() {
+    VkInstance instance;
+
     // App info
     VkApplicationInfo app_info {};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -40,9 +44,11 @@ inline void create_instance(VkInstance* p_instance) {
     create_info.enabledLayerCount = 0;
 
     // Create instance
-    if (vkCreateInstance(&create_info, nullptr, p_instance) != VK_SUCCESS) {
+    if (vkCreateInstance(&create_info, nullptr, &instance) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create instance.");
     }
+
+    return instance;
 }
 
 // Queue families
@@ -81,7 +87,7 @@ inline auto is_physical_device_suitable(VkPhysicalDevice device) {
     return indices.is_complete();
 }
 
-inline auto pick_physical_device(const VkInstance& instance) {
+inline auto pick_physical_device(VkInstance instance) {
     VkPhysicalDevice physical_device = VK_NULL_HANDLE;
 
     // Find physical devices
@@ -110,11 +116,10 @@ inline auto pick_physical_device(const VkInstance& instance) {
 // Logical devices
 //-----------------------------------------------------------------------------
 // The logical device should be properly destroyed after use.
-inline void create_logical_device(
-    VkDevice* p_dev,
-    VkQueue*  p_graphics_queue,
-    VkPhysicalDevice phy_dev
-) {
+inline auto create_logical_device(VkPhysicalDevice phy_dev) {
+    VkDevice dev;
+    VkQueue  graphics_queue;
+
     auto indices = find_queue_families(phy_dev);
 
     // Create queue
@@ -145,15 +150,29 @@ inline void create_logical_device(
     }
 
     // Create logical device
-    if(vkCreateDevice(phy_dev, &ci, nullptr, p_dev) != VK_SUCCESS) {
+    if(vkCreateDevice(phy_dev, &ci, nullptr, &dev) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create logical device.");
     }
 
     // Get queue handle
-    vkGetDeviceQueue(*p_dev, indices.graphics_family.value(), 0, p_graphics_queue);
+    vkGetDeviceQueue(dev, indices.graphics_family.value(), 0, &graphics_queue);
+
+    return std::tuple(dev, graphics_queue);
 }
 
-} // namespace vkm
+// Window surfaces
+//-----------------------------------------------------------------------------
+inline auto create_surface(VkInstance instance, GLFWwindow* window) {
+    VkSurfaceKHR surface;
+
+    if(glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create window surface.");
+    }
+
+    return surface;
+}
+
+} // namespace vk_util
 } // namespace pgw
 
 #endif

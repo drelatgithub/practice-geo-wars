@@ -50,13 +50,18 @@ private:
     }
 
     void vulkan_init_() {
-        vkm::create_instance(&instance_);
-        physical_device_ = vkm::pick_physical_device(instance_);
-        vkm::create_logical_device(&device_, &graphics_queue_, physical_device_);
+        instance_ = vk_util::create_instance();
+        surface_  = vk_util::create_surface(instance_, window_);
+        physical_device_ = vk_util::pick_physical_device(instance_);
+        std::tie(
+            device_,
+            graphics_queue_
+        ) = vk_util::create_logical_device(physical_device_);
     }
 
     void vulkan_destroy_() {
         vkDestroyDevice(device_, nullptr);
+        vkDestroySurfaceKHR(instance_, surface_, nullptr);
         vkDestroyInstance(instance_, nullptr);
     }
 
@@ -65,6 +70,7 @@ private:
 
     VkInstance       instance_;
     VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
+    VkSurfaceKHR     surface_;
     VkDevice         device_;
     VkQueue          graphics_queue_;
 
