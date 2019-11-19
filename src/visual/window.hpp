@@ -58,9 +58,16 @@ private:
             graphics_queue_,
             present_queue_
         ) = vk_util::create_logical_device(physical_device_, surface_);
+        std::tie(
+            swap_chain_,
+            swap_chain_images_,
+            swap_chain_image_format_,
+            swap_chain_extent_
+        ) = vk_util::create_swap_chain(physical_device_, surface_, device_, width_, height_);
     }
 
     void vulkan_destroy_() {
+        vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
         vkDestroyDevice(device_, nullptr);
         vkDestroySurfaceKHR(instance_, surface_, nullptr);
         vkDestroyInstance(instance_, nullptr);
@@ -71,10 +78,17 @@ private:
 
     VkInstance       instance_;
     VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
+
     VkSurfaceKHR     surface_;
+
     VkDevice         device_;
     VkQueue          graphics_queue_;
     VkQueue          present_queue_;
+
+    VkSwapchainKHR   swap_chain_;
+    std::vector< VkImage > swap_chain_images_;
+    VkFormat         swap_chain_image_format_;
+    VkExtent2D       swap_chain_extent_;
 
     int width_;
     int height_;
