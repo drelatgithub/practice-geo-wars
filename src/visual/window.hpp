@@ -53,20 +53,31 @@ private:
         instance_ = vk_util::create_instance();
         surface_  = vk_util::create_surface(instance_, window_);
         physical_device_ = vk_util::pick_physical_device(instance_, surface_);
+
         std::tie(
             device_,
             graphics_queue_,
             present_queue_
         ) = vk_util::create_logical_device(physical_device_, surface_);
+
         std::tie(
             swap_chain_,
             swap_chain_images_,
             swap_chain_image_format_,
             swap_chain_extent_
         ) = vk_util::create_swap_chain(physical_device_, surface_, device_, width_, height_);
+
+        swap_chain_image_views_ = vk_util::create_image_views(
+            device_,
+            swap_chain_images_,
+            swap_chain_image_format_
+        );
     }
 
     void vulkan_destroy_() {
+        for (auto view : swap_chain_image_views_) {
+            vkDestroyImageView(device_, view, nullptr);
+        }
         vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
         vkDestroyDevice(device_, nullptr);
         vkDestroySurfaceKHR(instance_, surface_, nullptr);
@@ -89,6 +100,8 @@ private:
     std::vector< VkImage > swap_chain_images_;
     VkFormat         swap_chain_image_format_;
     VkExtent2D       swap_chain_extent_;
+
+    std::vector< VkImageView > swap_chain_image_views_;
 
     int width_;
     int height_;
