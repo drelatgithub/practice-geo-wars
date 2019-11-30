@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Directories -->
+  <PropertyGroup>
+    <SrcDir>$(MSBuildProjectDirectory)\..\src\</SrcDir>
+    <ShaderDir>$(SrcDir)\visual\shaders\</ShaderDir>
+    <OutDir>$(SolutionDir)\build\$(MSBuildProjectName)-$(Platform)-$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)\temp\$(MSBuildProjectName)-$(Platform)-$(Configuration)\</IntDir>
+  </PropertyGroup>
+
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
@@ -51,12 +59,17 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="$(SrcDir)\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\visual\window.hpp" />
+    <ClInclude Include="$(SrcDir)\visual\window.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <GlslShader Include="$(SrcDir)\visual\shaders\shader.frag" />
+    <GlslShader Include="$(SrcDir)\visual\shaders\shader.vert" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="GlslShader.targets" />
   </ImportGroup>
 </Project>

@@ -1,2 +1,4 @@
 # Visual Studio generated
 .vs/
+vs/build/
+vs/temp/
