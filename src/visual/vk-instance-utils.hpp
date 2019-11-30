@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "visual-common.hpp"
+#include "visual/shaders/shaders.hpp"
 
 // This file provides helper functions for generating vk instances and related
 // configurations.
@@ -418,6 +419,50 @@ inline auto create_logical_device(
     return std::tuple(dev, graphics_queue, present_queue);
 }
 
+
+// Graphics pipelines
+//-----------------------------------------------------------------------------
+inline auto create_shader_module(
+    VkDevice                          dev,
+    const std::vector<unsigned char>& code
+) {
+    VkShaderModule res;
+
+    VkShaderModuleCreateInfo ci {};
+    ci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    ci.codeSize = code.size();
+    ci.pCode = reinterpret_cast<const std::uint32_t*>(code.data());
+
+    if(vkCreateShaderModule(dev, &ci, nullptr, &res) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create shader module.");
+    }
+
+    return res;
+}
+inline void create_graphics_pipeline(VkDevice dev) {
+    const auto vert_sm = create_shader_module(dev, vertex_shader::shader);
+    const auto frag_sm = create_shader_module(dev, fragment_shader::shader);
+
+    VkPipelineShaderStageCreateInfo vert_ci {};
+    vert_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vert_ci.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vert_ci.module = vert_sm;
+    vert_ci.pName = "main";
+
+    VkPipelineShaderStageCreateInfo frag_ci {};
+    frag_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    frag_ci.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    frag_ci.module = frag_sm;
+    frag_ci.pName = "main";
+
+    VkPipelineShaderStageCreateInfo cis[] {
+        vert_ci,
+        frag_ci
+    };
+
+    vkDestroyShaderModule(dev, frag_sm, nullptr);
+    vkDestroyShaderModule(dev, vert_sm, nullptr);
+}
 
 } // namespace vk_util
 } // namespace pgw

@@ -1,3 +1,11 @@
+## Build intermediates
+
+# Compiled shaders
+*.spv
+*.spv.hpp
+
+## Editors and IDEs
+
 # Visual Studio generated
 .vs/
 vs/build/
