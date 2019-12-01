@@ -2,6 +2,7 @@
 #define PGW_VISUAL_VK_INSTANCE_UTILS_HPP
 
 #include <algorithm> // clamp
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -757,23 +758,38 @@ inline auto create_command_buffers(
 
 // Command pool and buffers
 //-----------------------------------------------------------------------------
-inline auto create_semaphores(VkDevice dev) {
-    VkSemaphore image_available_semaphore;
-    VkSemaphore render_finished_semaphore;
+template< std::size_t max_frames >
+inline auto create_sync_objs(
+    VkDevice dev,
+    const std::vector< VkImage > swap_chain_images
+) {
+    std::array< VkSemaphore, max_frames > image_available_semaphores;
+    std::array< VkSemaphore, max_frames > render_finished_semaphores;
+    std::array< VkFence, max_frames > in_flight_fences;
+    std::vector< VkFence > images_in_flight(swap_chain_images.size());
 
     VkSemaphoreCreateInfo ci {};
     ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    if(
-        vkCreateSemaphore(dev, &ci, nullptr, &image_available_semaphore) != VK_SUCCESS
-        || vkCreateSemaphore(dev, &ci, nullptr, &render_finished_semaphore) != VK_SUCCESS
-    ) {
-        throw std::runtime_error("Failed to create semaphores.");
+    VkFenceCreateInfo fence_ci {};
+    fence_ci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_ci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    for(std::size_t i = 0; i < max_frames; ++i) {
+        if(
+            vkCreateSemaphore(dev, &ci, nullptr, &image_available_semaphores[i]) != VK_SUCCESS
+            || vkCreateSemaphore(dev, &ci, nullptr, &render_finished_semaphores[i]) != VK_SUCCESS
+            || vkCreateFence(dev, &fence_ci, nullptr, &in_flight_fences[i]) != VK_SUCCESS
+        ) {
+            throw std::runtime_error("Failed to create synchronization objects for a frame.");
+        }
     }
 
     return std::tuple(
-        image_available_semaphore,
-        render_finished_semaphore
+        image_available_semaphores,
+        render_finished_semaphores,
+        in_flight_fences,
+        images_in_flight
     );
 }
 

@@ -6,6 +6,9 @@
 
 ## Editors and IDEs
 
+# Visual Studio Code configs
+.vscode/
+
 # Visual Studio generated
 .vs/
 vs/build/

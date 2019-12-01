@@ -15,6 +15,8 @@ namespace pgw {
 class Window {
 public:
 
+    constexpr static int max_frames_in_flight = 2;
+
     Window(int width, int height) :
         width_(width),
         height_(height)
@@ -29,9 +31,12 @@ public:
     }
 
     void mainloop() {
+        std::size_t current_frame = 0;
+
         while(!glfwWindowShouldClose(window_)) {
             glfwPollEvents();
-            draw_frame_();
+            draw_frame_(current_frame);
+            current_frame = (current_frame + 1) % max_frames_in_flight;
         }
 
         vkDeviceWaitIdle(device_);
@@ -95,25 +100,59 @@ private:
         );
 
         std::tie(
-            image_available_semaphore_,
-            render_finished_semaphore_
-        ) = vk_util::create_semaphores(device_);
+            image_available_semaphores_,
+            render_finished_semaphores_,
+            in_flight_fences_,
+            images_in_flight_
+        ) = vk_util::create_sync_objs< max_frames_in_flight >(device_, swap_chain_images_);
     }
 
-    void draw_frame_() {
+    void vulkan_destroy_() {
+        for(std::size_t i = 0; i < max_frames_in_flight; ++i) {
+            vkDestroySemaphore(device_, render_finished_semaphores_[i], nullptr);
+            vkDestroySemaphore(device_, image_available_semaphores_[i], nullptr);
+            vkDestroyFence(device_, in_flight_fences_[i], nullptr);
+        }
+        vkDestroyCommandPool(device_, command_pool_, nullptr);
+        for(auto framebuffer : swap_chain_framebuffers_) {
+            vkDestroyFramebuffer(device_, framebuffer, nullptr);
+        }
+        vkDestroyPipeline(device_, graphics_pipeline_, nullptr);
+        vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
+        vkDestroyRenderPass(device_, render_pass_, nullptr);
+        for (auto view : swap_chain_image_views_) {
+            vkDestroyImageView(device_, view, nullptr);
+        }
+        vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
+        vkDestroyDevice(device_, nullptr);
+        vkDestroySurfaceKHR(instance_, surface_, nullptr);
+        vkDestroyInstance(instance_, nullptr);
+    }
+
+    void draw_frame_(std::size_t frame) {
+        // Fences
+        vkWaitForFences(device_, 1, &in_flight_fences_[frame], VK_TRUE, UINT64_MAX);
+
         // Acquire image from swap chain
         std::uint32_t image_index;
         vkAcquireNextImageKHR(
             device_,
             swap_chain_,
             UINT64_MAX,
-            image_available_semaphore_,
+            image_available_semaphores_[frame],
             VK_NULL_HANDLE,
             &image_index
         );
 
-        VkSemaphore wait_semaphores[] { image_available_semaphore_ };
-        VkSemaphore signal_semaphores[] { render_finished_semaphore_ };
+        // Check if a previous frame is using this image
+        if(images_in_flight_[image_index] != VK_NULL_HANDLE) {
+            vkWaitForFences(device_, 1, &images_in_flight_[image_index], VK_TRUE, UINT64_MAX);
+        }
+        // Mark the image as now being in use by this frame
+        images_in_flight_[image_index] = in_flight_fences_[frame];
+
+        VkSemaphore wait_semaphores[] { image_available_semaphores_[frame] };
+        VkSemaphore signal_semaphores[] { render_finished_semaphores_[frame] };
 
         // Submit command buffer
         VkSubmitInfo si {};
@@ -128,7 +167,8 @@ private:
         si.signalSemaphoreCount = 1;
         si.pSignalSemaphores = signal_semaphores;
 
-        if(vkQueueSubmit(graphics_queue_, 1, &si, VK_NULL_HANDLE) != VK_SUCCESS) {
+        vkResetFences(device_, 1, &in_flight_fences_[frame]);
+        if(vkQueueSubmit(graphics_queue_, 1, &si, in_flight_fences_[frame]) != VK_SUCCESS) {
             throw std::runtime_error("Failed to submit draw command buffer.");
         }
 
@@ -145,25 +185,6 @@ private:
         pi.pResults = nullptr;
 
         vkQueuePresentKHR(present_queue_, &pi);
-    }
-
-    void vulkan_destroy_() {
-        vkDestroySemaphore(device_, render_finished_semaphore_, nullptr);
-        vkDestroySemaphore(device_, image_available_semaphore_, nullptr);
-        vkDestroyCommandPool(device_, command_pool_, nullptr);
-        for(auto framebuffer : swap_chain_framebuffers_) {
-            vkDestroyFramebuffer(device_, framebuffer, nullptr);
-        }
-        vkDestroyPipeline(device_, graphics_pipeline_, nullptr);
-        vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
-        vkDestroyRenderPass(device_, render_pass_, nullptr);
-        for (auto view : swap_chain_image_views_) {
-            vkDestroyImageView(device_, view, nullptr);
-        }
-        vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
-        vkDestroyDevice(device_, nullptr);
-        vkDestroySurfaceKHR(instance_, surface_, nullptr);
-        vkDestroyInstance(instance_, nullptr);
     }
 
     // Member variables
@@ -198,8 +219,10 @@ private:
     VkCommandPool    command_pool_;
     std::vector< VkCommandBuffer > command_buffers_;
 
-    VkSemaphore image_available_semaphore_;
-    VkSemaphore render_finished_semaphore_;
+    std::array< VkSemaphore, max_frames_in_flight > image_available_semaphores_;
+    std::array< VkSemaphore, max_frames_in_flight > render_finished_semaphores_;
+    std::array< VkFence, max_frames_in_flight > in_flight_fences_;
+    std::vector< VkFence > images_in_flight_;
 
     // Settings
     int width_;
