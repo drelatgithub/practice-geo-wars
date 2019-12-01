@@ -439,7 +439,10 @@ inline auto create_shader_module(
 
     return res;
 }
-inline void create_graphics_pipeline(VkDevice dev) {
+inline void create_graphics_pipeline(
+    VkDevice   dev,
+    VkExtent2D swap_chain_extent
+) {
     const auto vert_sm = create_shader_module(dev, vertex_shader::shader);
     const auto frag_sm = create_shader_module(dev, fragment_shader::shader);
 
@@ -455,10 +458,63 @@ inline void create_graphics_pipeline(VkDevice dev) {
     frag_ci.module = frag_sm;
     frag_ci.pName = "main";
 
-    VkPipelineShaderStageCreateInfo cis[] {
+    VkPipelineShaderStageCreateInfo ss_ci[] {
         vert_ci,
         frag_ci
     };
+
+    VkPipelineVertexInputStateCreateInfo vertex_input_ci {};
+    vertex_input_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertex_input_ci.vertexBindingDescriptionCount = 0;
+    vertex_input_ci.pVertexBindingDescriptions = nullptr;
+    vertex_input_ci.vertexAttributeDescriptionCount = 0;
+    vertex_input_ci.pVertexAttributeDescriptions = nullptr;
+
+    VkPipelineInputAssemblyStateCreateInfo input_asm_ci {};
+    input_asm_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    input_asm_ci.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    input_asm_ci.primitiveRestartEnable = VK_FALSE;
+
+    VkViewport viewport {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = swap_chain_extent.width;
+    viewport.height = swap_chain_extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor {};
+    scissor.offset = {0, 0};
+    scissor.extent = swap_chain_extent;
+
+    VkPipelineViewportStateCreateInfo vp_ci {};
+    vp_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vp_ci.viewportCount = 1;
+    vp_ci.pViewports = &viewport;
+    vp_ci.scissorCount = 1;
+    vp_ci.pScissors = &scissor;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer_ci {};
+    rasterizer_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer_ci.depthClampEnable = VK_FALSE;
+    rasterizer_ci.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer_ci.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer_ci.lineWidth = 1.0f;
+    rasterizer_ci.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer_ci.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer_ci.depthBiasEnable = VK_FALSE;
+    rasterizer_ci.depthBiasConstantFactor = 0.0f;
+    rasterizer_ci.depthBiasClamp = 0.0f;
+    rasterizer_ci.depthBiasSlopeFactor = 0.0f;
+
+    VkPipelineMultisampleStateCreateInfo multisample_ci {};
+    multisample_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisample_ci.sampleShadingEnable = VK_FALSE;
+    multisample_ci.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisample_ci.minSampleShading = 1.0f;
+    multisample_ci.pSampleMask = nullptr;
+    multisample_ci.alphaToCoverageEnable = VK_FALSE;
+    multisample_ci.alphaToOneEnable = VK_FALSE;
 
     vkDestroyShaderModule(dev, frag_sm, nullptr);
     vkDestroyShaderModule(dev, vert_sm, nullptr);
