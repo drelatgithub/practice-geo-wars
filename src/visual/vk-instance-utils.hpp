@@ -439,10 +439,12 @@ inline auto create_shader_module(
 
     return res;
 }
-inline void create_graphics_pipeline(
+inline auto create_graphics_pipeline(
     VkDevice   dev,
     VkExtent2D swap_chain_extent
 ) {
+    VkPipelineLayout pipeline_layout;
+
     const auto vert_sm = create_shader_module(dev, vertex_shader::shader);
     const auto frag_sm = create_shader_module(dev, fragment_shader::shader);
 
@@ -516,8 +518,51 @@ inline void create_graphics_pipeline(
     multisample_ci.alphaToCoverageEnable = VK_FALSE;
     multisample_ci.alphaToOneEnable = VK_FALSE;
 
+    VkPipelineColorBlendAttachmentState cba_state {};
+    cba_state.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    cba_state.blendEnable = VK_FALSE;
+    cba_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    cba_state.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    cba_state.colorBlendOp = VK_BLEND_OP_ADD;
+    cba_state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    cba_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    cba_state.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo cb_ci {};
+    cb_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    cb_ci.logicOpEnable = VK_FALSE;
+    cb_ci.logicOp = VK_LOGIC_OP_COPY;
+    cb_ci.attachmentCount = 1;
+    cb_ci.pAttachments = &cba_state;
+    cb_ci.blendConstants[0] = 0.0f;
+    cb_ci.blendConstants[1] = 0.0f;
+    cb_ci.blendConstants[2] = 0.0f;
+    cb_ci.blendConstants[3] = 0.0f;
+
+    VkDynamicState dynamic_states[] {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_LINE_WIDTH
+    };
+    VkPipelineDynamicStateCreateInfo ds_ci {};
+    ds_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    ds_ci.dynamicStateCount = 2;
+    ds_ci.pDynamicStates = dynamic_states;
+
+    VkPipelineLayoutCreateInfo pl_ci {};
+    pl_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pl_ci.setLayoutCount = 0;
+    pl_ci.pSetLayouts = nullptr;
+    pl_ci.pushConstantRangeCount = 0;
+    pl_ci.pPushConstantRanges = nullptr;
+
+    if(vkCreatePipelineLayout(dev, &pl_ci, nullptr, &pipeline_layout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create pipeline layout.");
+    }
+
     vkDestroyShaderModule(dev, frag_sm, nullptr);
     vkDestroyShaderModule(dev, vert_sm, nullptr);
+
+    return pipeline_layout;
 }
 
 } // namespace vk_util

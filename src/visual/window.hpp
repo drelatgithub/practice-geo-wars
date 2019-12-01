@@ -72,9 +72,12 @@ private:
             swap_chain_images_,
             swap_chain_image_format_
         );
+
+        pipeline_layout_ = vk_util::create_graphics_pipeline(device_, swap_chain_extent_);
     }
 
     void vulkan_destroy_() {
+        vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
         for (auto view : swap_chain_image_views_) {
             vkDestroyImageView(device_, view, nullptr);
         }
@@ -102,6 +105,8 @@ private:
     VkExtent2D       swap_chain_extent_;
 
     std::vector< VkImageView > swap_chain_image_views_;
+
+    VkPipelineLayout pipeline_layout_;
 
     int width_;
     int height_;
