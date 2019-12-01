@@ -614,7 +614,7 @@ inline auto create_graphics_pipeline(
     pipeline_ci.pMultisampleState = &multisample_ci;
     pipeline_ci.pDepthStencilState = nullptr;
     pipeline_ci.pColorBlendState = &cb_ci;
-    pipeline_ci.pDynamicState = &ds_ci;
+    pipeline_ci.pDynamicState = nullptr; // &ds_ci;
     pipeline_ci.layout = pipeline_layout;
     pipeline_ci.renderPass = render_pass;
     pipeline_ci.subpass = 0;
@@ -665,7 +665,7 @@ inline auto create_framebuffers(
 }
 
 
-// Command pool
+// Command pool and buffers
 //-----------------------------------------------------------------------------
 inline auto create_command_pool(
     VkDevice         dev,
@@ -686,6 +686,62 @@ inline auto create_command_pool(
     }
 
     return command_pool;
+}
+
+inline auto create_command_buffers(
+    VkDevice      dev,
+    VkExtent2D    swap_chain_extent,
+    VkRenderPass  render_pass,
+    VkPipeline    graphics_pipeline,
+    const std::vector< VkFramebuffer >& swap_chain_framebuffers,
+    VkCommandPool command_pool
+) {
+    std::vector< VkCommandBuffer > command_buffers(swap_chain_framebuffers.size());
+
+    VkCommandBufferAllocateInfo ai {};
+    ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    ai.commandPool = command_pool;
+    ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    ai.commandBufferCount = command_buffers.size();
+
+    if(vkAllocateCommandBuffers(dev, &ai, command_buffers.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate command buffers.");
+    }
+
+    for(size_t i = 0; i < command_buffers.size(); ++i) {
+        // Starting command buffer recording
+        VkCommandBufferBeginInfo cb_bi {};
+        cb_bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cb_bi.flags = 0;
+        cb_bi.pInheritanceInfo = nullptr;
+
+        if(vkBeginCommandBuffer(command_buffers[i], &cb_bi) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to begin recording command buffer.");
+        }
+
+        VkRenderPassBeginInfo rp_bi {};
+        rp_bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rp_bi.renderPass = render_pass;
+        rp_bi.framebuffer = swap_chain_framebuffers[i];
+        rp_bi.renderArea.offset = {0, 0};
+        rp_bi.renderArea.extent = swap_chain_extent;
+
+        VkClearValue clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+        rp_bi.clearValueCount = 1;
+        rp_bi.pClearValues = &clear_color;
+        vkCmdBeginRenderPass(command_buffers[i], &rp_bi, VK_SUBPASS_CONTENTS_INLINE);
+
+        vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+        vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+
+        // End command buffer recording
+        vkCmdEndRenderPass(command_buffers[i]);
+        if(vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to record command buffer.");
+        }
+    }
+
+    return command_buffers;
 }
 
 

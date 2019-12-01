@@ -82,6 +82,14 @@ private:
         swap_chain_framebuffers_ = vk_util::create_framebuffers(device_, swap_chain_image_views_, swap_chain_extent_, render_pass_);
 
         command_pool_ = vk_util::create_command_pool(device_, physical_device_, surface_);
+        command_buffers_ = vk_util::create_command_buffers(
+            device_,
+            swap_chain_extent_,
+            render_pass_,
+            graphics_pipeline_,
+            swap_chain_framebuffers_,
+            command_pool_
+        );
     }
 
     void vulkan_destroy_() {
@@ -127,6 +135,7 @@ private:
     std::vector< VkFramebuffer > swap_chain_framebuffers_;
 
     VkCommandPool    command_pool_;
+    std::vector< VkCommandBuffer > command_buffers_;
 
     int width_;
     int height_;
