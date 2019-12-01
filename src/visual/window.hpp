@@ -33,6 +33,8 @@ public:
             glfwPollEvents();
             draw_frame_();
         }
+
+        vkDeviceWaitIdle(device_);
     }
 
 private:
@@ -110,26 +112,39 @@ private:
             &image_index
         );
 
+        VkSemaphore wait_semaphores[] { image_available_semaphore_ };
+        VkSemaphore signal_semaphores[] { render_finished_semaphore_ };
+
         // Submit command buffer
         VkSubmitInfo si {};
         si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        VkSemaphore wait_semaphores[] { image_available_semaphore_ };
         VkPipelineStageFlags wait_stages[] { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         si.waitSemaphoreCount = 1;
         si.pWaitSemaphores = wait_semaphores;
         si.pWaitDstStageMask = wait_stages;
-
         si.commandBufferCount = 1;
         si.pCommandBuffers = &command_buffers_[image_index];
-
-        VkSemaphore signal_semaphores[] { render_finished_semaphore_ };
         si.signalSemaphoreCount = 1;
         si.pSignalSemaphores = signal_semaphores;
 
         if(vkQueueSubmit(graphics_queue_, 1, &si, VK_NULL_HANDLE) != VK_SUCCESS) {
             throw std::runtime_error("Failed to submit draw command buffer.");
         }
+
+        // Presentation
+        VkPresentInfoKHR pi {};
+        pi.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        pi.waitSemaphoreCount = 1;
+        pi.pWaitSemaphores = signal_semaphores;
+
+        VkSwapchainKHR swap_chains[] { swap_chain_ };
+        pi.swapchainCount = 1;
+        pi.pSwapchains = swap_chains;
+        pi.pImageIndices = &image_index;
+        pi.pResults = nullptr;
+
+        vkQueuePresentKHR(present_queue_, &pi);
     }
 
     void vulkan_destroy_() {
