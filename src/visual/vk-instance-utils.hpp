@@ -308,7 +308,7 @@ inline auto check_physical_device_extension_support(VkPhysicalDevice device) {
     return unsupported_exts.empty();
 }
 
-inline auto is_physical_device_suitable(
+inline bool is_physical_device_suitable(
     VkPhysicalDevice device,
     VkSurfaceKHR     surface
 ) {
@@ -417,6 +417,48 @@ inline auto create_logical_device(
     vkGetDeviceQueue(dev, indices.present_family.value(),  0, &present_queue);
 
     return std::tuple(dev, graphics_queue, present_queue);
+}
+
+
+// Render passes
+//-----------------------------------------------------------------------------
+inline auto create_render_pass(
+    VkDevice dev,
+    VkFormat swap_chain_image_format
+) {
+    VkRenderPass render_pass;
+
+    VkAttachmentDescription color_attachment {};
+    color_attachment.format = swap_chain_image_format;
+    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+    VkAttachmentReference color_attachment_ref {};
+    color_attachment_ref.attachment = 0;
+    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &color_attachment_ref;
+
+    VkRenderPassCreateInfo rp_ci {};
+    rp_ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rp_ci.attachmentCount = 1;
+    rp_ci.pAttachments = &color_attachment;
+    rp_ci.subpassCount = 1;
+    rp_ci.pSubpasses = &subpass;
+
+    if(vkCreateRenderPass(dev, &rp_ci, nullptr, &render_pass) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create render pass.");
+    }
+
+    return render_pass;
 }
 
 
@@ -564,6 +606,7 @@ inline auto create_graphics_pipeline(
 
     return pipeline_layout;
 }
+
 
 } // namespace vk_util
 } // namespace pgw
