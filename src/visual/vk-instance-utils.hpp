@@ -632,6 +632,39 @@ inline auto create_graphics_pipeline(
 }
 
 
+// Framebuffers
+//-----------------------------------------------------------------------------
+inline auto create_framebuffers(
+    VkDevice     dev,
+    const std::vector< VkImageView >& swap_chain_image_views,
+    VkExtent2D   swap_chain_extent,
+    VkRenderPass render_pass
+) {
+    std::vector< VkFramebuffer > swap_chain_framebuffers(swap_chain_image_views.size());
+
+    for(size_t i = 0; i < swap_chain_image_views.size(); ++i) {
+        VkImageView attachments[] {
+            swap_chain_image_views[i]
+        };
+
+        VkFramebufferCreateInfo ci {};
+        ci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        ci.renderPass = render_pass;
+        ci.attachmentCount = 1;
+        ci.pAttachments = attachments;
+        ci.width = swap_chain_extent.width;
+        ci.height = swap_chain_extent.height;
+        ci.layers = 1;
+
+        if(vkCreateFramebuffer(dev, &ci, nullptr, &swap_chain_framebuffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create framebuffer.");
+        }
+    }
+
+    return swap_chain_framebuffers;
+}
+
+
 } // namespace vk_util
 } // namespace pgw
 

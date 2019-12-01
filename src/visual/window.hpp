@@ -78,9 +78,14 @@ private:
             pipeline_layout_,
             graphics_pipeline_
         ) = vk_util::create_graphics_pipeline(device_, swap_chain_extent_, render_pass_);
+
+        swap_chain_framebuffers_ = vk_util::create_framebuffers(device_, swap_chain_image_views_, swap_chain_extent_, render_pass_);
     }
 
     void vulkan_destroy_() {
+        for(auto framebuffer : swap_chain_framebuffers_) {
+            vkDestroyFramebuffer(device_, framebuffer, nullptr);
+        }
         vkDestroyPipeline(device_, graphics_pipeline_, nullptr);
         vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
         vkDestroyRenderPass(device_, render_pass_, nullptr);
@@ -115,6 +120,8 @@ private:
     VkRenderPass     render_pass_;
     VkPipelineLayout pipeline_layout_;
     VkPipeline       graphics_pipeline_;
+
+    std::vector< VkFramebuffer > swap_chain_framebuffers_;
 
     int width_;
     int height_;
