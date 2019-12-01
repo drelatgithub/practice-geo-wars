@@ -665,6 +665,30 @@ inline auto create_framebuffers(
 }
 
 
+// Command pool
+//-----------------------------------------------------------------------------
+inline auto create_command_pool(
+    VkDevice         dev,
+    VkPhysicalDevice phys_dev,
+    VkSurfaceKHR     surface
+) {
+    VkCommandPool command_pool;
+
+    const auto qf_indices = find_queue_families(phys_dev, surface);
+
+    VkCommandPoolCreateInfo ci {};
+    ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    ci.queueFamilyIndex = qf_indices.graphics_family.value();
+    ci.flags = 0;
+
+    if(vkCreateCommandPool(dev, &ci, nullptr, &command_pool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create command pool.");
+    }
+
+    return command_pool;
+}
+
+
 } // namespace vk_util
 } // namespace pgw
 
