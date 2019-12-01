@@ -31,6 +31,7 @@ public:
     void mainloop() {
         while(!glfwWindowShouldClose(window_)) {
             glfwPollEvents();
+            draw_frame_();
         }
     }
 
@@ -90,9 +91,50 @@ private:
             swap_chain_framebuffers_,
             command_pool_
         );
+
+        std::tie(
+            image_available_semaphore_,
+            render_finished_semaphore_
+        ) = vk_util::create_semaphores(device_);
+    }
+
+    void draw_frame_() {
+        // Acquire image from swap chain
+        std::uint32_t image_index;
+        vkAcquireNextImageKHR(
+            device_,
+            swap_chain_,
+            UINT64_MAX,
+            image_available_semaphore_,
+            VK_NULL_HANDLE,
+            &image_index
+        );
+
+        // Submit command buffer
+        VkSubmitInfo si {};
+        si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+        VkSemaphore wait_semaphores[] { image_available_semaphore_ };
+        VkPipelineStageFlags wait_stages[] { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+        si.waitSemaphoreCount = 1;
+        si.pWaitSemaphores = wait_semaphores;
+        si.pWaitDstStageMask = wait_stages;
+
+        si.commandBufferCount = 1;
+        si.pCommandBuffers = &command_buffers_[image_index];
+
+        VkSemaphore signal_semaphores[] { render_finished_semaphore_ };
+        si.signalSemaphoreCount = 1;
+        si.pSignalSemaphores = signal_semaphores;
+
+        if(vkQueueSubmit(graphics_queue_, 1, &si, VK_NULL_HANDLE) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to submit draw command buffer.");
+        }
     }
 
     void vulkan_destroy_() {
+        vkDestroySemaphore(device_, render_finished_semaphore_, nullptr);
+        vkDestroySemaphore(device_, image_available_semaphore_, nullptr);
         vkDestroyCommandPool(device_, command_pool_, nullptr);
         for(auto framebuffer : swap_chain_framebuffers_) {
             vkDestroyFramebuffer(device_, framebuffer, nullptr);
@@ -110,8 +152,12 @@ private:
     }
 
     // Member variables
+    //-------------------------------------------------------------------------
+
+    // GLFW window
     GLFWwindow*      window_ = nullptr;
 
+    // Vulkan instance
     VkInstance       instance_;
     VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
 
@@ -137,6 +183,10 @@ private:
     VkCommandPool    command_pool_;
     std::vector< VkCommandBuffer > command_buffers_;
 
+    VkSemaphore image_available_semaphore_;
+    VkSemaphore render_finished_semaphore_;
+
+    // Settings
     int width_;
     int height_;
 };

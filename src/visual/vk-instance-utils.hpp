@@ -745,6 +745,29 @@ inline auto create_command_buffers(
 }
 
 
+// Command pool and buffers
+//-----------------------------------------------------------------------------
+inline auto create_semaphores(VkDevice dev) {
+    VkSemaphore image_available_semaphore;
+    VkSemaphore render_finished_semaphore;
+
+    VkSemaphoreCreateInfo ci {};
+    ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    if(
+        vkCreateSemaphore(dev, &ci, nullptr, &image_available_semaphore) != VK_SUCCESS
+        || vkCreateSemaphore(dev, &ci, nullptr, &render_finished_semaphore) != VK_SUCCESS
+    ) {
+        throw std::runtime_error("Failed to create semaphores.");
+    }
+
+    return std::tuple(
+        image_available_semaphore,
+        render_finished_semaphore
+    );
+}
+
+
 } // namespace vk_util
 } // namespace pgw
 
