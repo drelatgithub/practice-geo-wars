@@ -482,10 +482,12 @@ inline auto create_shader_module(
     return res;
 }
 inline auto create_graphics_pipeline(
-    VkDevice   dev,
-    VkExtent2D swap_chain_extent
+    VkDevice     dev,
+    VkExtent2D   swap_chain_extent,
+    VkRenderPass render_pass
 ) {
     VkPipelineLayout pipeline_layout;
+    VkPipeline       graphics_pipeline;
 
     const auto vert_sm = create_shader_module(dev, vertex_shader::shader);
     const auto frag_sm = create_shader_module(dev, fragment_shader::shader);
@@ -601,10 +603,32 @@ inline auto create_graphics_pipeline(
         throw std::runtime_error("Failed to create pipeline layout.");
     }
 
+    VkGraphicsPipelineCreateInfo pipeline_ci {};
+    pipeline_ci.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipeline_ci.stageCount = 2;
+    pipeline_ci.pStages = ss_ci;
+    pipeline_ci.pVertexInputState = &vertex_input_ci;
+    pipeline_ci.pInputAssemblyState = &input_asm_ci;
+    pipeline_ci.pViewportState = &vp_ci;
+    pipeline_ci.pRasterizationState = &rasterizer_ci;
+    pipeline_ci.pMultisampleState = &multisample_ci;
+    pipeline_ci.pDepthStencilState = nullptr;
+    pipeline_ci.pColorBlendState = &cb_ci;
+    pipeline_ci.pDynamicState = &ds_ci;
+    pipeline_ci.layout = pipeline_layout;
+    pipeline_ci.renderPass = render_pass;
+    pipeline_ci.subpass = 0;
+    pipeline_ci.basePipelineHandle = VK_NULL_HANDLE;
+    pipeline_ci.basePipelineIndex = -1;
+
+    if(vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &graphics_pipeline) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create graphics pipeline.");
+    }
+
     vkDestroyShaderModule(dev, frag_sm, nullptr);
     vkDestroyShaderModule(dev, vert_sm, nullptr);
 
-    return pipeline_layout;
+    return std::tuple(pipeline_layout, graphics_pipeline);
 }
 
 

@@ -74,10 +74,14 @@ private:
         );
 
         render_pass_ = vk_util::create_render_pass(device_, swap_chain_image_format_);
-        pipeline_layout_ = vk_util::create_graphics_pipeline(device_, swap_chain_extent_);
+        std::tie(
+            pipeline_layout_,
+            graphics_pipeline_
+        ) = vk_util::create_graphics_pipeline(device_, swap_chain_extent_, render_pass_);
     }
 
     void vulkan_destroy_() {
+        vkDestroyPipeline(device_, graphics_pipeline_, nullptr);
         vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
         vkDestroyRenderPass(device_, render_pass_, nullptr);
         for (auto view : swap_chain_image_views_) {
@@ -110,6 +114,7 @@ private:
 
     VkRenderPass     render_pass_;
     VkPipelineLayout pipeline_layout_;
+    VkPipeline       graphics_pipeline_;
 
     int width_;
     int height_;
