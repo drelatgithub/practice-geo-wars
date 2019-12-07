@@ -495,7 +495,11 @@ inline auto create_shader_module(
 inline auto create_graphics_pipeline(
     VkDevice     dev,
     VkExtent2D   swap_chain_extent,
-    VkRenderPass render_pass
+    VkRenderPass render_pass,
+    VkVertexInputBindingDescription
+                 vi_binding_desc,
+    std::array< VkVertexInputAttributeDescription, 2 >
+                 vi_attr_desc
 ) {
     VkPipelineLayout pipeline_layout;
     VkPipeline       graphics_pipeline;
@@ -522,10 +526,10 @@ inline auto create_graphics_pipeline(
 
     VkPipelineVertexInputStateCreateInfo vertex_input_ci {};
     vertex_input_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_ci.vertexBindingDescriptionCount = 0;
-    vertex_input_ci.pVertexBindingDescriptions = nullptr;
-    vertex_input_ci.vertexAttributeDescriptionCount = 0;
-    vertex_input_ci.pVertexAttributeDescriptions = nullptr;
+    vertex_input_ci.vertexBindingDescriptionCount = 1;
+    vertex_input_ci.pVertexBindingDescriptions = &vi_binding_desc;
+    vertex_input_ci.vertexAttributeDescriptionCount = std::size(vi_attr_desc);
+    vertex_input_ci.pVertexAttributeDescriptions = vi_attr_desc.data();
 
     VkPipelineInputAssemblyStateCreateInfo input_asm_ci {};
     input_asm_ci.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -558,7 +562,7 @@ inline auto create_graphics_pipeline(
     rasterizer_ci.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer_ci.lineWidth = 1.0f;
     rasterizer_ci.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer_ci.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer_ci.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer_ci.depthBiasEnable = VK_FALSE;
     rasterizer_ci.depthBiasConstantFactor = 0.0f;
     rasterizer_ci.depthBiasClamp = 0.0f;

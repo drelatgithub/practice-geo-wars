@@ -13,6 +13,40 @@
 
 namespace pgw {
 
+struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static auto get_binding_desc() {
+        VkVertexInputBindingDescription bd {};
+
+        bd.binding = 0;
+        bd.stride = sizeof(Vertex);
+        bd.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        return bd;
+    }
+
+    static auto get_attr_desc() {
+        std::array< VkVertexInputAttributeDescription, 2 > ad {};
+
+        ad[0].binding = 0;
+        ad[0].location = 0;
+        ad[0].format = VK_FORMAT_R32G32_SFLOAT;
+        ad[0].offset = offsetof(Vertex, pos);
+        ad[1].binding = 0;
+        ad[1].location = 1;
+        ad[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        ad[1].offset = offsetof(Vertex, color);
+        return ad;
+    }
+};
+inline const std::vector< Vertex > vertices {
+    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, 0.5f }, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+};
+
 class Window {
 public:
 
@@ -118,7 +152,13 @@ private:
         std::tie(
             pipeline_layout_,
             graphics_pipeline_
-        ) = vk_util::create_graphics_pipeline(device_, swap_chain_extent_, render_pass_);
+        ) = vk_util::create_graphics_pipeline(
+            device_,
+            swap_chain_extent_,
+            render_pass_,
+            Vertex::get_binding_desc(),
+            Vertex::get_attr_desc()
+        );
 
         swap_chain_framebuffers_ = vk_util::create_framebuffers(
             device_,

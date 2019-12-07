@@ -1,12 +1,14 @@
 ## Build intermediates
+#--------------------------------------
 
 # Compiled shaders
 *.spv
 *.spv.hpp
 
 ## Editors and IDEs
+#--------------------------------------
 
-# Visual Studio Code configs
+# Visual Studio Code
 .vscode/
 
 # Visual Studio generated
