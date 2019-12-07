@@ -107,6 +107,15 @@ private:
 
         command_pool_ = vk_util::create_command_pool(device_, physical_device_, surface_);
 
+        std::tie(
+            vertex_buffer_,
+            vertex_buffer_memory_
+        ) = vk_util::create_vertex_buffer(
+            physical_device_,
+            device_,
+            vertices
+        );
+
         vulkan_swap_chain_init_();
 
         std::tie(
@@ -123,7 +132,11 @@ private:
             vkDestroySemaphore(device_, image_available_semaphores_[i], nullptr);
             vkDestroyFence(device_, in_flight_fences_[i], nullptr);
         }
+
         vulkan_swap_chain_destroy_();
+
+        vkDestroyBuffer(device_, vertex_buffer_, nullptr);
+        vkFreeMemory(device_, vertex_buffer_memory_, nullptr);
 
         vkDestroyCommandPool(device_, command_pool_, nullptr);
 
@@ -173,7 +186,9 @@ private:
             render_pass_,
             graphics_pipeline_,
             swap_chain_framebuffers_,
-            command_pool_
+            command_pool_,
+            vertex_buffer_,
+            vertices.size()
         );
     }
 
@@ -338,6 +353,9 @@ private:
 
     VkCommandPool    command_pool_;
     std::vector< VkCommandBuffer > command_buffers_;
+
+    VkDeviceMemory   vertex_buffer_memory_;
+    VkBuffer         vertex_buffer_;
 
     std::array< VkSemaphore, max_frames_in_flight > image_available_semaphores_;
     std::array< VkSemaphore, max_frames_in_flight > render_finished_semaphores_;

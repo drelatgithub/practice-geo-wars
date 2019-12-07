@@ -680,6 +680,78 @@ inline auto create_framebuffers(
 }
 
 
+// Vertex buffer
+//-----------------------------------------------------------------------------
+
+inline std::uint32_t find_memory_type(
+    VkPhysicalDevice      phy_dev,
+    std::uint32_t         type_filter,
+    VkMemoryPropertyFlags prop_f
+) {
+    VkPhysicalDeviceMemoryProperties mem_prop;
+    vkGetPhysicalDeviceMemoryProperties(phy_dev, &mem_prop);
+
+    for(std::uint32_t i = 0; i < mem_prop.memoryTypeCount; ++i) {
+        if(type_filter & (1 << i) && (mem_prop.memoryTypes[i].propertyFlags & prop_f) == prop_f) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("Failed to find a suitable memory type.");
+}
+
+template< typename VType >
+inline auto create_vertex_buffer(
+    VkPhysicalDevice phy_dev,
+    VkDevice         device,
+    const std::vector< VType >& vertex_data
+) {
+    VkBuffer       vertex_buffer;
+    VkDeviceMemory vertex_buffer_memory;
+
+    // Create vertex buffer
+    VkBufferCreateInfo buf_ci {};
+    buf_ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buf_ci.size = vertex_data.size() * sizeof(VType);
+    buf_ci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buf_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if(vkCreateBuffer(device, &buf_ci, nullptr, &vertex_buffer) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create vertex buffer.");
+    }
+
+    // Allocate vertex buffer memory
+    VkMemoryRequirements mem_req;
+    vkGetBufferMemoryRequirements(device, vertex_buffer, &mem_req);
+
+    VkMemoryAllocateInfo alloc_info {};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = mem_req.size;
+    alloc_info.memoryTypeIndex = find_memory_type(
+        phy_dev,
+        mem_req.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+
+    if(vkAllocateMemory(device, &alloc_info, nullptr, &vertex_buffer_memory) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate vertex buffer memory.");
+    }
+
+    vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
+
+    // Copy vertex data
+    void* data;
+    vkMapMemory(device, vertex_buffer_memory, 0, buf_ci.size, 0, &data);
+    std::memcpy(data, vertex_data.data(), buf_ci.size);
+    vkUnmapMemory(device, vertex_buffer_memory);
+
+    return std::tuple(
+        vertex_buffer,
+        vertex_buffer_memory
+    );
+}
+
+
 // Command pool and buffers
 //-----------------------------------------------------------------------------
 inline auto create_command_pool(
@@ -709,7 +781,9 @@ inline auto create_command_buffers(
     VkRenderPass  render_pass,
     VkPipeline    graphics_pipeline,
     const std::vector< VkFramebuffer >& swap_chain_framebuffers,
-    VkCommandPool command_pool
+    VkCommandPool command_pool,
+    VkBuffer      vertex_buffer,
+    std::size_t   num_vertices
 ) {
     std::vector< VkCommandBuffer > command_buffers(swap_chain_framebuffers.size());
 
@@ -747,7 +821,12 @@ inline auto create_command_buffers(
         vkCmdBeginRenderPass(command_buffers[i], &rp_bi, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-        vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+
+        VkBuffer vertex_buffers[] { vertex_buffer };
+        VkDeviceSize offsets[] { 0 };
+        vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+
+        vkCmdDraw(command_buffers[i], num_vertices, 1, 0, 0);
 
         // End command buffer recording
         vkCmdEndRenderPass(command_buffers[i]);
