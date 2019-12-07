@@ -7,6 +7,7 @@
 #include <string>
 #include <utility> // move
 
+#include "glfw-utils.hpp"
 #include "visual-common.hpp"
 #include "vk-instance-utils.hpp"
 
@@ -17,11 +18,8 @@ public:
 
     constexpr static int max_frames_in_flight = 2;
 
-    Window(int width, int height) :
-        width_(width),
-        height_(height)
-    {
-        glfw_init_();
+    Window(int width, int height) {
+        glfw_init_(width, height);
         vulkan_init_();
     }
 
@@ -43,18 +41,23 @@ public:
     }
 
 private:
-    void glfw_init_() {
-        glfwInit();
+    static void callback_framebuffer_resize_(GLFWwindow* window, int width, int height) {
+        auto& the_window = *static_cast< Window* >(glfwGetWindowUserPointer(window));
+        the_window.framebuffer_resized_ = true;
+    }
+
+    void glfw_init_(int width, int height) {
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-        window_ = glfwCreateWindow(width_, height_, window_title, nullptr, nullptr);
+
+        window_ = glfwCreateWindow(width, height, window_title, nullptr, nullptr);
+        glfwSetWindowUserPointer(window_, this);
+        glfwSetFramebufferSizeCallback(window_, callback_framebuffer_resize_);
     }
 
     void glfw_destroy_() {
         glfwDestroyWindow(window_);
 
-        glfwTerminate();
     }
 
     void vulkan_init_() {
@@ -68,36 +71,9 @@ private:
             present_queue_
         ) = vk_util::create_logical_device(physical_device_, surface_);
 
-        std::tie(
-            swap_chain_,
-            swap_chain_images_,
-            swap_chain_image_format_,
-            swap_chain_extent_
-        ) = vk_util::create_swap_chain(physical_device_, surface_, device_, width_, height_);
-
-        swap_chain_image_views_ = vk_util::create_image_views(
-            device_,
-            swap_chain_images_,
-            swap_chain_image_format_
-        );
-
-        render_pass_ = vk_util::create_render_pass(device_, swap_chain_image_format_);
-        std::tie(
-            pipeline_layout_,
-            graphics_pipeline_
-        ) = vk_util::create_graphics_pipeline(device_, swap_chain_extent_, render_pass_);
-
-        swap_chain_framebuffers_ = vk_util::create_framebuffers(device_, swap_chain_image_views_, swap_chain_extent_, render_pass_);
-
         command_pool_ = vk_util::create_command_pool(device_, physical_device_, surface_);
-        command_buffers_ = vk_util::create_command_buffers(
-            device_,
-            swap_chain_extent_,
-            render_pass_,
-            graphics_pipeline_,
-            swap_chain_framebuffers_,
-            command_pool_
-        );
+
+        vulkan_swap_chain_init_();
 
         std::tie(
             image_available_semaphores_,
@@ -113,7 +89,57 @@ private:
             vkDestroySemaphore(device_, image_available_semaphores_[i], nullptr);
             vkDestroyFence(device_, in_flight_fences_[i], nullptr);
         }
+        vulkan_swap_chain_destroy_();
+
         vkDestroyCommandPool(device_, command_pool_, nullptr);
+
+        vkDestroyDevice(device_, nullptr);
+        vkDestroySurfaceKHR(instance_, surface_, nullptr);
+        vkDestroyInstance(instance_, nullptr);
+    }
+
+    void vulkan_swap_chain_init_() {
+
+        const auto [width, height] = glfw_util::get_framebuffer_size(window_);
+
+        std::tie(
+            swap_chain_,
+            swap_chain_images_,
+            swap_chain_image_format_,
+            swap_chain_extent_
+        ) = vk_util::create_swap_chain(physical_device_, surface_, device_, width, height);
+        swap_chain_image_views_ = vk_util::create_image_views(
+            device_,
+            swap_chain_images_,
+            swap_chain_image_format_
+        );
+
+        render_pass_ = vk_util::create_render_pass(device_, swap_chain_image_format_);
+        std::tie(
+            pipeline_layout_,
+            graphics_pipeline_
+        ) = vk_util::create_graphics_pipeline(device_, swap_chain_extent_, render_pass_);
+
+        swap_chain_framebuffers_ = vk_util::create_framebuffers(
+            device_,
+            swap_chain_image_views_,
+            swap_chain_extent_,
+            render_pass_
+        );
+
+        command_buffers_ = vk_util::create_command_buffers(
+            device_,
+            swap_chain_extent_,
+            render_pass_,
+            graphics_pipeline_,
+            swap_chain_framebuffers_,
+            command_pool_
+        );
+    }
+
+    void vulkan_swap_chain_destroy_() {
+        vkFreeCommandBuffers(device_, command_pool_, command_buffers_.size(), command_buffers_.data());
+
         for(auto framebuffer : swap_chain_framebuffers_) {
             vkDestroyFramebuffer(device_, framebuffer, nullptr);
         }
@@ -124,9 +150,21 @@ private:
             vkDestroyImageView(device_, view, nullptr);
         }
         vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
-        vkDestroyDevice(device_, nullptr);
-        vkDestroySurfaceKHR(instance_, surface_, nullptr);
-        vkDestroyInstance(instance_, nullptr);
+    }
+
+    void vulkan_swap_chain_recreate_() {
+        for(
+            auto [width, height] = glfw_util::get_framebuffer_size(window_);
+            width == 0 || height == 0;
+            glfwGetFramebufferSize(window_, &width, &height)
+        ) {
+            glfwWaitEvents();
+        }
+
+        vkDeviceWaitIdle(device_);
+
+        vulkan_swap_chain_destroy_();
+        vulkan_swap_chain_init_();
     }
 
     void draw_frame_(std::size_t frame) {
@@ -135,14 +173,30 @@ private:
 
         // Acquire image from swap chain
         std::uint32_t image_index;
-        vkAcquireNextImageKHR(
-            device_,
-            swap_chain_,
-            UINT64_MAX,
-            image_available_semaphores_[frame],
-            VK_NULL_HANDLE,
-            &image_index
-        );
+        {
+            const auto result = vkAcquireNextImageKHR(
+                device_,
+                swap_chain_,
+                UINT64_MAX,
+                image_available_semaphores_[frame],
+                VK_NULL_HANDLE,
+                &image_index
+            );
+
+            switch(result) {
+
+            case VK_ERROR_OUT_OF_DATE_KHR:
+                vulkan_swap_chain_recreate_();
+                return;
+
+            case VK_SUCCESS:
+            case VK_SUBOPTIMAL_KHR:
+                break;
+
+            default:
+                throw std::runtime_error("Failed to acquire swap chain image.");
+            }
+        }
 
         // Check if a previous frame is using this image
         if(images_in_flight_[image_index] != VK_NULL_HANDLE) {
@@ -184,11 +238,37 @@ private:
         pi.pImageIndices = &image_index;
         pi.pResults = nullptr;
 
-        vkQueuePresentKHR(present_queue_, &pi);
+        {
+            const auto result = vkQueuePresentKHR(present_queue_, &pi);
+
+            bool need_swap_chain_recreate = framebuffer_resized_;
+
+            switch(result) {
+
+            case VK_ERROR_OUT_OF_DATE_KHR:
+            case VK_SUBOPTIMAL_KHR:
+                need_swap_chain_recreate = true;
+                break;
+
+            case VK_SUCCESS:
+                break;
+
+            default:
+                throw std::runtime_error("Failed to present swap chain image.");
+            }
+
+            if(need_swap_chain_recreate) {
+                framebuffer_resized_ = false;
+                vulkan_swap_chain_recreate_();
+            }
+        }
     }
+
 
     // Member variables
     //-------------------------------------------------------------------------
+
+    glfw_util::EnvGuard glfw_env_guard_;
 
     // GLFW window
     GLFWwindow*      window_ = nullptr;
@@ -224,9 +304,8 @@ private:
     std::array< VkFence, max_frames_in_flight > in_flight_fences_;
     std::vector< VkFence > images_in_flight_;
 
-    // Settings
-    int width_;
-    int height_;
+    // States
+    bool framebuffer_resized_ = false;
 };
 
 inline void window() {
