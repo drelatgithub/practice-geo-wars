@@ -113,6 +113,8 @@ private:
         ) = vk_util::create_vertex_buffer(
             physical_device_,
             device_,
+            command_pool_,
+            graphics_queue_,
             vertices
         );
 
