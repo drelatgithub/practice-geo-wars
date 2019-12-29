@@ -17,8 +17,13 @@ jobs:
     - uses: actions/checkout@v1
     - name: Prepare dependencies
       run: |
+        # Set up chocolatey profile so that refreshenv is an ps alias
+        $env:ChocolateyInstall = Convert-Path "$((Get-Command choco).Path)\..\.."   
+        Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+        # Install vulkan-sdk and update env
         choco install vulkan-sdk -y
-        RefreshEnv
+        refreshenv
+        # Install required packages from vcpkg
         vcpkg install glfw3:x64-windows glm:x64-windows vulkan:x64-windows
     - name: Build Visual Studio solution
       working-directory: ${{ github.workspace }}
