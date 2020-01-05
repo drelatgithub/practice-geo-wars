@@ -28,5 +28,11 @@ jobs:
         vcpkg integrate install
     - name: Build Visual Studio solution
       working-directory: ${{ github.workspace }}
-      run: '& "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild.exe" .\vs\GeoWars.sln'
+      run: |
+        # Set up chocolatey profile so that refreshenv is an ps alias
+        $env:ChocolateyInstall = Convert-Path "$((Get-Command choco).Path)\..\.."   
+        Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+        refreshenv
+        # Build solution
+        & "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\MSBuild.exe" .\vs\GeoWars.sln
 
