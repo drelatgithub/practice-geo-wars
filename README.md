@@ -1,3 +1,3 @@
 # Practice work for Geometry Wars
 
-![](https://github.com/drelatgithub/practice-geo-wars/workflows/build/badge.svg)
+[![Build Status](https://github.com/drelatgithub/practice-geo-wars/workflows/build/badge.svg)](https://github.com/drelatgithub/practice-geo-wars/actions)
