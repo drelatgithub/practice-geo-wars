@@ -94,16 +94,16 @@ struct QueueFamilyIndices {
     }
 };
 inline auto find_queue_families(
-    VkPhysicalDevice phy_dev,
+    VkPhysicalDevice phys_dev,
     VkSurfaceKHR     surface
 ) {
     QueueFamilyIndices indices;
 
     std::uint32_t qf_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(phy_dev, &qf_count, nullptr);
+    vkGetPhysicalDeviceQueueFamilyProperties(phys_dev, &qf_count, nullptr);
 
     std::vector< VkQueueFamilyProperties > qf(qf_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(phy_dev, &qf_count, qf.data());
+    vkGetPhysicalDeviceQueueFamilyProperties(phys_dev, &qf_count, qf.data());
 
     for(int i = 0; i < qf.size(); ++i) {
         if(qf[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -111,7 +111,7 @@ inline auto find_queue_families(
         }
         {
             VkBool32 present_support = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(phy_dev, i, surface, &present_support);
+            vkGetPhysicalDeviceSurfaceSupportKHR(phys_dev, i, surface, &present_support);
             if(present_support) {
                 indices.present_family = i;
             }
@@ -295,11 +295,11 @@ inline auto create_image_views(
 
 // Physical devices
 //-----------------------------------------------------------------------------
-inline auto check_physical_device_extension_support(VkPhysicalDevice device) {
+inline auto check_physical_device_extension_support(VkPhysicalDevice phys_dev) {
     std::uint32_t ext_count;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, nullptr);
+    vkEnumerateDeviceExtensionProperties(phys_dev, nullptr, &ext_count, nullptr);
     std::vector< VkExtensionProperties > available_exts(ext_count);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &ext_count, available_exts.data());
+    vkEnumerateDeviceExtensionProperties(phys_dev, nullptr, &ext_count, available_exts.data());
 
     std::set< std::string > unsupported_exts(device_extensions.begin(), device_extensions.end());
     for(const auto& ext : available_exts) {
@@ -310,16 +310,16 @@ inline auto check_physical_device_extension_support(VkPhysicalDevice device) {
 }
 
 inline bool is_physical_device_suitable(
-    VkPhysicalDevice device,
+    VkPhysicalDevice phys_dev,
     VkSurfaceKHR     surface
 ) {
-    const auto indices = find_queue_families(device, surface);
+    const auto indices = find_queue_families(phys_dev, surface);
 
-    const bool extensions_supported = check_physical_device_extension_support(device);
+    const bool extensions_supported = check_physical_device_extension_support(phys_dev);
 
     bool swap_chain_adequate = false;
     if(extensions_supported) {
-        const auto sc = query_swap_chain_support(device, surface);
+        const auto sc = query_swap_chain_support(phys_dev, surface);
         swap_chain_adequate = !sc.formats.empty() && !sc.present_modes.empty();
     }
 
@@ -359,14 +359,14 @@ inline auto pick_physical_device(
 //-----------------------------------------------------------------------------
 // The logical device should be properly destroyed after use.
 inline auto create_logical_device(
-    VkPhysicalDevice phy_dev,
+    VkPhysicalDevice phys_dev,
     VkSurfaceKHR     surface
 ) {
     VkDevice dev;
     VkQueue  graphics_queue;
     VkQueue  present_queue;
 
-    const auto indices = find_queue_families(phy_dev, surface);
+    const auto indices = find_queue_families(phys_dev, surface);
 
     // Create queues
     std::vector< VkDeviceQueueCreateInfo > queue_cis;
@@ -409,7 +409,7 @@ inline auto create_logical_device(
     }
 
     // Create logical device
-    if(vkCreateDevice(phy_dev, &ci, nullptr, &dev) != VK_SUCCESS) {
+    if(vkCreateDevice(phys_dev, &ci, nullptr, &dev) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create logical device.");
     }
 
@@ -684,12 +684,12 @@ inline auto create_framebuffers(
 //-----------------------------------------------------------------------------
 
 inline std::uint32_t find_memory_type(
-    VkPhysicalDevice      phy_dev,
+    VkPhysicalDevice      phys_dev,
     std::uint32_t         type_filter,
     VkMemoryPropertyFlags prop_f
 ) {
     VkPhysicalDeviceMemoryProperties mem_prop;
-    vkGetPhysicalDeviceMemoryProperties(phy_dev, &mem_prop);
+    vkGetPhysicalDeviceMemoryProperties(phys_dev, &mem_prop);
 
     for(std::uint32_t i = 0; i < mem_prop.memoryTypeCount; ++i) {
         if(type_filter & (1 << i) && (mem_prop.memoryTypes[i].propertyFlags & prop_f) == prop_f) {
@@ -701,7 +701,7 @@ inline std::uint32_t find_memory_type(
 }
 
 inline auto create_buffer(
-    VkPhysicalDevice      phy_dev,
+    VkPhysicalDevice      phys_dev,
     VkDevice              device,
     VkDeviceSize          size,
     VkBufferUsageFlags    usage_f,
@@ -729,7 +729,7 @@ inline auto create_buffer(
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_req.size;
     alloc_info.memoryTypeIndex = find_memory_type(
-        phy_dev,
+        phys_dev,
         mem_req.memoryTypeBits,
         mem_prop_f
     );

@@ -76,8 +76,8 @@ public:
 
 private:
     static void callback_framebuffer_resize_(GLFWwindow* window, int width, int height) {
-        auto& the_window = *static_cast< Window* >(glfwGetWindowUserPointer(window));
-        the_window.framebuffer_resized_ = true;
+        auto p_window = static_cast< Window* >(glfwGetWindowUserPointer(window));
+        p_window->framebuffer_resized_ = true;
     }
 
     void glfw_init_(int width, int height) {
