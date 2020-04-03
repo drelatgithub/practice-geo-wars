@@ -9,7 +9,7 @@
 
 #include "glfw-utils.hpp"
 #include "visual-common.hpp"
-#include "vk-instance-utils.hpp"
+#include "vk-utils.hpp"
 
 namespace pgw {
 

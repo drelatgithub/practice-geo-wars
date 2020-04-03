@@ -1,5 +1,5 @@
-#ifndef PGW_VISUAL_VK_INSTANCE_UTILS_HPP
-#define PGW_VISUAL_VK_INSTANCE_UTILS_HPP
+#ifndef PGW_VISUAL_VK_UTILS_HPP
+#define PGW_VISUAL_VK_UTILS_HPP
 
 #include <algorithm> // clamp
 #include <array>
