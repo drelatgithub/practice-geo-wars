@@ -86,6 +86,7 @@ inline auto create_surface(VkInstance instance, GLFWwindow* window) {
 struct QueueFamilyIndices {
     std::optional<std::uint32_t> graphics_family;
     std::optional<std::uint32_t> present_family;
+    std::optional<std::uint32_t> transfer_family;
 
     // Check if all the queue families are available
     bool is_complete() const {
@@ -108,6 +109,9 @@ inline auto find_queue_families(
     for(int i = 0; i < qf.size(); ++i) {
         if(qf[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphics_family = i;
+        }
+        if(qf[i].queueFlags & VK_QUEUE_TRANSFER_BIT) {
+            indices.transfer_family = i;
         }
         {
             VkBool32 present_support = false;
@@ -220,18 +224,23 @@ inline auto create_swap_chain(
     ci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
     const auto indices = find_queue_families(phy_dev, surface);
-    std::uint32_t queue_family_indices[] {
-        indices.graphics_family.value(),
-        indices.present_family.value()
-    };
-    if(indices.graphics_family == indices.present_family) {
+    const auto unique_queue_family_indices = [&] {
+        std::set< std::uint32_t > unique_set {
+            indices.graphics_family.value(),
+            indices.present_family.value(),
+            indices.transfer_family.value()
+        };
+        return std::vector< std::uint32_t >(unique_set.begin(), unique_set.end());
+    }();
+
+    if(unique_queue_family_indices.size() == 1) {
         ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         ci.queueFamilyIndexCount = 0; // Optional
         ci.pQueueFamilyIndices = nullptr; // Optional
     } else {
         ci.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-        ci.queueFamilyIndexCount = 2;
-        ci.pQueueFamilyIndices = queue_family_indices;
+        ci.queueFamilyIndexCount = unique_queue_family_indices.size();
+        ci.pQueueFamilyIndices = unique_queue_family_indices.data();
     }
 
     ci.preTransform = sc_support.capabilities.currentTransform;
@@ -365,6 +374,7 @@ inline auto create_logical_device(
     VkDevice dev;
     VkQueue  graphics_queue;
     VkQueue  present_queue;
+    VkQueue  transfer_queue;
 
     const auto indices = find_queue_families(phys_dev, surface);
 
@@ -374,7 +384,8 @@ inline auto create_logical_device(
     {
         std::set< std::uint32_t > qfs {
             indices.graphics_family.value(),
-            indices.present_family.value()
+            indices.present_family.value(),
+            indices.transfer_family.value()
         };
 
         queue_cis.reserve(qfs.size());
@@ -416,8 +427,9 @@ inline auto create_logical_device(
     // Get queue handle
     vkGetDeviceQueue(dev, indices.graphics_family.value(), 0, &graphics_queue);
     vkGetDeviceQueue(dev, indices.present_family.value(),  0, &present_queue);
+    vkGetDeviceQueue(dev, indices.transfer_family.value(), 0, &transfer_queue);
 
-    return std::tuple(dev, graphics_queue, present_queue);
+    return std::tuple(dev, graphics_queue, present_queue, transfer_queue);
 }
 
 
@@ -750,7 +762,7 @@ inline auto create_buffer(
 inline void copy_buffer(
     VkDevice      device,
     VkCommandPool command_pool,
-    VkQueue       graphics_queue,
+    VkQueue       transfer_queue,
     VkBuffer      src_buffer,
     VkBuffer      dst_buffer,
     VkDeviceSize  size
@@ -785,8 +797,8 @@ inline void copy_buffer(
     si.commandBufferCount = 1;
     si.pCommandBuffers = &command_buffer;
 
-    vkQueueSubmit(graphics_queue, 1, &si, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphics_queue);
+    vkQueueSubmit(transfer_queue, 1, &si, VK_NULL_HANDLE);
+    vkQueueWaitIdle(transfer_queue);
 
     // Clean up
     vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
@@ -797,7 +809,7 @@ inline auto create_vertex_buffer(
     VkPhysicalDevice phy_dev,
     VkDevice         device,
     VkCommandPool    command_pool,
-    VkQueue          graphics_queue,
+    VkQueue          transfer_queue,
     const std::vector< VType >& vertex_data
 ) {
     const VkDeviceSize buffer_size = vertex_data.size() * sizeof(VType);
@@ -834,7 +846,7 @@ inline auto create_vertex_buffer(
     copy_buffer(
         device,
         command_pool,
-        graphics_queue,
+        transfer_queue,
         staging_buffer,
         vertex_buffer,
         buffer_size
@@ -858,20 +870,33 @@ inline auto create_command_pool(
     VkPhysicalDevice phys_dev,
     VkSurfaceKHR     surface
 ) {
-    VkCommandPool command_pool;
+    VkCommandPool graphics_command_pool;
+    VkCommandPool transfer_command_pool;
 
     const auto qf_indices = find_queue_families(phys_dev, surface);
 
-    VkCommandPoolCreateInfo ci {};
-    ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    ci.queueFamilyIndex = qf_indices.graphics_family.value();
-    ci.flags = 0;
+    {
+        VkCommandPoolCreateInfo ci {};
+        ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        ci.queueFamilyIndex = qf_indices.graphics_family.value();
+        ci.flags = 0;
 
-    if(vkCreateCommandPool(dev, &ci, nullptr, &command_pool) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create command pool.");
+        if(vkCreateCommandPool(dev, &ci, nullptr, &graphics_command_pool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create command pool.");
+        }
+    }
+    {
+        VkCommandPoolCreateInfo ci {};
+        ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        ci.queueFamilyIndex = qf_indices.transfer_family.value();
+        ci.flags = 0;
+
+        if(vkCreateCommandPool(dev, &ci, nullptr, &transfer_command_pool) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create command pool.");
+        }
     }
 
-    return command_pool;
+    return std::tuple(graphics_command_pool, transfer_command_pool);
 }
 
 inline auto create_command_buffers(

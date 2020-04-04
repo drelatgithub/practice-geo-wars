@@ -102,10 +102,14 @@ private:
         std::tie(
             device_,
             graphics_queue_,
-            present_queue_
+            present_queue_,
+            transfer_queue_
         ) = vk_util::create_logical_device(physical_device_, surface_);
 
-        command_pool_ = vk_util::create_command_pool(device_, physical_device_, surface_);
+        std::tie(
+            graphics_command_pool_,
+            transfer_command_pool_
+        ) = vk_util::create_command_pool(device_, physical_device_, surface_);
 
         std::tie(
             vertex_buffer_,
@@ -113,8 +117,8 @@ private:
         ) = vk_util::create_vertex_buffer(
             physical_device_,
             device_,
-            command_pool_,
-            graphics_queue_,
+            transfer_command_pool_,
+            transfer_queue_,
             vertices
         );
 
@@ -140,7 +144,8 @@ private:
         vkDestroyBuffer(device_, vertex_buffer_, nullptr);
         vkFreeMemory(device_, vertex_buffer_memory_, nullptr);
 
-        vkDestroyCommandPool(device_, command_pool_, nullptr);
+        vkDestroyCommandPool(device_, graphics_command_pool_, nullptr);
+        vkDestroyCommandPool(device_, transfer_command_pool_, nullptr);
 
         vkDestroyDevice(device_, nullptr);
         vkDestroySurfaceKHR(instance_, surface_, nullptr);
@@ -188,14 +193,14 @@ private:
             render_pass_,
             graphics_pipeline_,
             swap_chain_framebuffers_,
-            command_pool_,
+            graphics_command_pool_,
             vertex_buffer_,
             vertices.size()
         );
     }
 
     void vulkan_swap_chain_destroy_() {
-        vkFreeCommandBuffers(device_, command_pool_, command_buffers_.size(), command_buffers_.data());
+        vkFreeCommandBuffers(device_, graphics_command_pool_, command_buffers_.size(), command_buffers_.data());
 
         for(auto framebuffer : swap_chain_framebuffers_) {
             vkDestroyFramebuffer(device_, framebuffer, nullptr);
@@ -339,6 +344,7 @@ private:
     VkDevice         device_;
     VkQueue          graphics_queue_;
     VkQueue          present_queue_;
+    VkQueue          transfer_queue_;
 
     VkSwapchainKHR   swap_chain_;
     std::vector< VkImage > swap_chain_images_;
@@ -353,7 +359,8 @@ private:
 
     std::vector< VkFramebuffer > swap_chain_framebuffers_;
 
-    VkCommandPool    command_pool_;
+    VkCommandPool    graphics_command_pool_;
+    VkCommandPool    transfer_command_pool_;
     std::vector< VkCommandBuffer > command_buffers_;
 
     VkDeviceMemory   vertex_buffer_memory_;
