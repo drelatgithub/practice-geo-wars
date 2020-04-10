@@ -804,64 +804,6 @@ inline void copy_buffer(
     vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
 }
 
-template< typename VType >
-inline auto create_vertex_buffer(
-    VkPhysicalDevice phy_dev,
-    VkDevice         device,
-    VkCommandPool    command_pool,
-    VkQueue          transfer_queue,
-    const std::vector< VType >& vertex_data
-) {
-    const VkDeviceSize buffer_size = vertex_data.size() * sizeof(VType);
-
-    auto [
-        staging_buffer,
-        staging_buffer_memory
-    ] = create_buffer(
-        phy_dev,
-        device,
-        buffer_size,
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-    );
-
-    {
-        void* data;
-        vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
-        std::memcpy(data, vertex_data.data(), buffer_size);
-        vkUnmapMemory(device, staging_buffer_memory);
-    }
-
-    auto [
-        vertex_buffer,
-        vertex_buffer_memory
-    ] = create_buffer(
-        phy_dev,
-        device,
-        buffer_size,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-    );
-
-    copy_buffer(
-        device,
-        command_pool,
-        transfer_queue,
-        staging_buffer,
-        vertex_buffer,
-        buffer_size
-    );
-
-    // Clean up
-    vkDestroyBuffer(device, staging_buffer, nullptr);
-    vkFreeMemory(device, staging_buffer_memory, nullptr);
-
-    return std::tuple(
-        vertex_buffer,
-        vertex_buffer_memory
-    );
-}
-
 
 // Command pool and buffers
 //-----------------------------------------------------------------------------

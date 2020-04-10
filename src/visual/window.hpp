@@ -10,6 +10,7 @@
 #include "glfw-utils.hpp"
 #include "visual-common.hpp"
 #include "vk-utils.hpp"
+#include "vk-vertex-buffer-manager.hpp"
 
 namespace pgw {
 
@@ -111,16 +112,13 @@ private:
             transfer_command_pool_
         ) = vk_util::create_command_pool(device_, physical_device_, surface_);
 
-        std::tie(
-            vertex_buffer_,
-            vertex_buffer_memory_
-        ) = vk_util::create_vertex_buffer(
+        op_vertex_buffer_manager_.emplace(
             physical_device_,
             device_,
             transfer_command_pool_,
-            transfer_queue_,
-            vertices
+            transfer_queue_
         );
+        op_vertex_buffer_manager_->copy_data(vertices);
 
         vulkan_swap_chain_init_();
 
@@ -141,8 +139,7 @@ private:
 
         vulkan_swap_chain_destroy_();
 
-        vkDestroyBuffer(device_, vertex_buffer_, nullptr);
-        vkFreeMemory(device_, vertex_buffer_memory_, nullptr);
+        op_vertex_buffer_manager_.reset();
 
         vkDestroyCommandPool(device_, graphics_command_pool_, nullptr);
         vkDestroyCommandPool(device_, transfer_command_pool_, nullptr);
@@ -194,8 +191,8 @@ private:
             graphics_pipeline_,
             swap_chain_framebuffers_,
             graphics_command_pool_,
-            vertex_buffer_,
-            vertices.size()
+            op_vertex_buffer_manager_->buffer(),
+            op_vertex_buffer_manager_->num_vertices()
         );
     }
 
@@ -363,8 +360,7 @@ private:
     VkCommandPool    transfer_command_pool_;
     std::vector< VkCommandBuffer > command_buffers_;
 
-    VkDeviceMemory   vertex_buffer_memory_;
-    VkBuffer         vertex_buffer_;
+    std::optional< vk_util::VertexBufferManager > op_vertex_buffer_manager_;
 
     std::array< VkSemaphore, max_frames_in_flight > image_available_semaphores_;
     std::array< VkSemaphore, max_frames_in_flight > render_finished_semaphores_;
