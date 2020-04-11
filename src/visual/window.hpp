@@ -9,6 +9,7 @@
 
 #include "glfw-utils.hpp"
 #include "visual-common.hpp"
+#include "vk-swap-chain-manager.hpp"
 #include "vk-utils.hpp"
 #include "vk-vertex-buffer-manager.hpp"
 
@@ -29,7 +30,7 @@ struct Vertex {
     }
 
     static auto get_attr_desc() {
-        std::array< VkVertexInputAttributeDescription, 2 > ad {};
+        std::vector< VkVertexInputAttributeDescription > ad(2);
 
         ad[0].binding = 0;
         ad[0].location = 0;
@@ -41,11 +42,6 @@ struct Vertex {
         ad[1].offset = offsetof(Vertex, color);
         return ad;
     }
-};
-inline const std::vector< Vertex > vertices {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, 0.5f }, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
 };
 
 class Window {
@@ -63,16 +59,28 @@ public:
         glfw_destroy_();
     }
 
-    void mainloop() {
+    template<
+        typename BeforeRender
+    >
+    void mainloop(BeforeRender&& before_render) {
         std::size_t current_frame = 0;
 
         while(!glfwWindowShouldClose(window_)) {
             glfwPollEvents();
+
+            before_render();
+
             draw_frame_(current_frame);
             current_frame = (current_frame + 1) % max_frames_in_flight;
         }
 
         vkDeviceWaitIdle(device_);
+    }
+
+    // Utilities
+    //---------------------------------
+    void copy_vertex_data(const std::vector< Vertex >& vs) {
+        op_vertex_buffer_manager_.value().copy_data(vs);
     }
 
 private:
@@ -99,6 +107,7 @@ private:
         instance_ = vk_util::create_instance();
         surface_  = vk_util::create_surface(instance_, window_);
         physical_device_ = vk_util::pick_physical_device(instance_, surface_);
+        qf_indices_ = vk_util::find_queue_families(physical_device_, surface_);
 
         std::tie(
             device_,
@@ -107,10 +116,7 @@ private:
             transfer_queue_
         ) = vk_util::create_logical_device(physical_device_, surface_);
 
-        std::tie(
-            graphics_command_pool_,
-            transfer_command_pool_
-        ) = vk_util::create_command_pool(device_, physical_device_, surface_);
+        transfer_command_pool_ = vk_util::create_transfer_command_pool(device_, qf_indices_);
 
         op_vertex_buffer_manager_.emplace(
             physical_device_,
@@ -118,16 +124,27 @@ private:
             transfer_command_pool_,
             transfer_queue_
         );
-        op_vertex_buffer_manager_->copy_data(vertices);
 
-        vulkan_swap_chain_init_();
+        const auto [width, height] = glfw_util::get_framebuffer_size(window_);
+        op_swap_chain_manager_.emplace(
+            physical_device_,
+            surface_,
+            qf_indices_,
+            device_,
+            width, height,
+            Vertex::get_binding_desc(),
+            Vertex::get_attr_desc()
+        );
 
         std::tie(
             image_available_semaphores_,
             render_finished_semaphores_,
             in_flight_fences_,
             images_in_flight_
-        ) = vk_util::create_sync_objs< max_frames_in_flight >(device_, swap_chain_images_);
+        ) = vk_util::create_sync_objs< max_frames_in_flight >(
+            device_,
+            op_swap_chain_manager_->num_images()
+        );
     }
 
     void vulkan_destroy_() {
@@ -137,78 +154,15 @@ private:
             vkDestroyFence(device_, in_flight_fences_[i], nullptr);
         }
 
-        vulkan_swap_chain_destroy_();
+        op_swap_chain_manager_.reset();
 
         op_vertex_buffer_manager_.reset();
 
-        vkDestroyCommandPool(device_, graphics_command_pool_, nullptr);
         vkDestroyCommandPool(device_, transfer_command_pool_, nullptr);
 
         vkDestroyDevice(device_, nullptr);
         vkDestroySurfaceKHR(instance_, surface_, nullptr);
         vkDestroyInstance(instance_, nullptr);
-    }
-
-    void vulkan_swap_chain_init_() {
-
-        const auto [width, height] = glfw_util::get_framebuffer_size(window_);
-
-        std::tie(
-            swap_chain_,
-            swap_chain_images_,
-            swap_chain_image_format_,
-            swap_chain_extent_
-        ) = vk_util::create_swap_chain(physical_device_, surface_, device_, width, height);
-        swap_chain_image_views_ = vk_util::create_image_views(
-            device_,
-            swap_chain_images_,
-            swap_chain_image_format_
-        );
-
-        render_pass_ = vk_util::create_render_pass(device_, swap_chain_image_format_);
-        std::tie(
-            pipeline_layout_,
-            graphics_pipeline_
-        ) = vk_util::create_graphics_pipeline(
-            device_,
-            swap_chain_extent_,
-            render_pass_,
-            Vertex::get_binding_desc(),
-            Vertex::get_attr_desc()
-        );
-
-        swap_chain_framebuffers_ = vk_util::create_framebuffers(
-            device_,
-            swap_chain_image_views_,
-            swap_chain_extent_,
-            render_pass_
-        );
-
-        command_buffers_ = vk_util::create_command_buffers(
-            device_,
-            swap_chain_extent_,
-            render_pass_,
-            graphics_pipeline_,
-            swap_chain_framebuffers_,
-            graphics_command_pool_,
-            op_vertex_buffer_manager_->buffer(),
-            op_vertex_buffer_manager_->num_vertices()
-        );
-    }
-
-    void vulkan_swap_chain_destroy_() {
-        vkFreeCommandBuffers(device_, graphics_command_pool_, command_buffers_.size(), command_buffers_.data());
-
-        for(auto framebuffer : swap_chain_framebuffers_) {
-            vkDestroyFramebuffer(device_, framebuffer, nullptr);
-        }
-        vkDestroyPipeline(device_, graphics_pipeline_, nullptr);
-        vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
-        vkDestroyRenderPass(device_, render_pass_, nullptr);
-        for (auto view : swap_chain_image_views_) {
-            vkDestroyImageView(device_, view, nullptr);
-        }
-        vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
     }
 
     void vulkan_swap_chain_recreate_() {
@@ -222,8 +176,12 @@ private:
 
         vkDeviceWaitIdle(device_);
 
-        vulkan_swap_chain_destroy_();
-        vulkan_swap_chain_init_();
+        const auto [width, height] = glfw_util::get_framebuffer_size(window_);
+        op_swap_chain_manager_.value().recreate(
+            width, height,
+            Vertex::get_binding_desc(),
+            Vertex::get_attr_desc()
+        );
     }
 
     void draw_frame_(std::size_t frame) {
@@ -235,7 +193,7 @@ private:
         {
             const auto result = vkAcquireNextImageKHR(
                 device_,
-                swap_chain_,
+                op_swap_chain_manager_->swap_chain(),
                 UINT64_MAX,
                 image_available_semaphores_[frame],
                 VK_NULL_HANDLE,
@@ -264,6 +222,22 @@ private:
         // Mark the image as now being in use by this frame
         images_in_flight_[image_index] = in_flight_fences_[frame];
 
+        // Reset and record the command buffer
+        //-----------------------------
+        vkResetCommandPool(device_, op_swap_chain_manager_->command_pools()[image_index], 0);
+
+        vk_util::record_graphics_command_buffer(
+            op_swap_chain_manager_->swap_chain_extent(),
+            op_swap_chain_manager_->render_pass(),
+            op_swap_chain_manager_->graphics_pipeline(),
+            op_swap_chain_manager_->framebuffers()[image_index],
+            op_swap_chain_manager_->command_buffers()[image_index],
+            op_vertex_buffer_manager_->buffer(),
+            op_vertex_buffer_manager_->num_vertices()
+        );
+
+        // Set up semaphores and get ready to submit
+        //-----------------------------
         VkSemaphore wait_semaphores[] { image_available_semaphores_[frame] };
         VkSemaphore signal_semaphores[] { render_finished_semaphores_[frame] };
 
@@ -276,7 +250,7 @@ private:
         si.pWaitSemaphores = wait_semaphores;
         si.pWaitDstStageMask = wait_stages;
         si.commandBufferCount = 1;
-        si.pCommandBuffers = &command_buffers_[image_index];
+        si.pCommandBuffers = &(op_swap_chain_manager_->command_buffers())[image_index];
         si.signalSemaphoreCount = 1;
         si.pSignalSemaphores = signal_semaphores;
 
@@ -291,7 +265,7 @@ private:
         pi.waitSemaphoreCount = 1;
         pi.pWaitSemaphores = signal_semaphores;
 
-        VkSwapchainKHR swap_chains[] { swap_chain_ };
+        VkSwapchainKHR swap_chains[] { op_swap_chain_manager_->swap_chain() };
         pi.swapchainCount = 1;
         pi.pSwapchains = swap_chains;
         pi.pImageIndices = &image_index;
@@ -337,28 +311,16 @@ private:
     VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
 
     VkSurfaceKHR     surface_;
+    vk_util::QueueFamilyIndices qf_indices_;
 
     VkDevice         device_;
     VkQueue          graphics_queue_;
     VkQueue          present_queue_;
     VkQueue          transfer_queue_;
 
-    VkSwapchainKHR   swap_chain_;
-    std::vector< VkImage > swap_chain_images_;
-    VkFormat         swap_chain_image_format_;
-    VkExtent2D       swap_chain_extent_;
+    std::optional< vk_util::SwapChainManager > op_swap_chain_manager_;
 
-    std::vector< VkImageView > swap_chain_image_views_;
-
-    VkRenderPass     render_pass_;
-    VkPipelineLayout pipeline_layout_;
-    VkPipeline       graphics_pipeline_;
-
-    std::vector< VkFramebuffer > swap_chain_framebuffers_;
-
-    VkCommandPool    graphics_command_pool_;
     VkCommandPool    transfer_command_pool_;
-    std::vector< VkCommandBuffer > command_buffers_;
 
     std::optional< vk_util::VertexBufferManager > op_vertex_buffer_manager_;
 
@@ -371,20 +333,6 @@ private:
     bool framebuffer_resized_ = false;
 };
 
-inline void window() {
-    Window w(800, 600);
-
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-
-    std::cout << extensionCount << " extensions supported" << std::endl;
-
-    glm::mat4 matrix;
-    glm::vec4 vec;
-    auto test = matrix * vec;
-
-    w.mainloop();
-}
 
 } // namespace pgw
 

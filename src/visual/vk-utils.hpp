@@ -91,7 +91,8 @@ struct QueueFamilyIndices {
     // Check if all the queue families are available
     bool is_complete() const {
         return graphics_family.has_value()
-            && present_family.has_value();
+            && present_family.has_value()
+            && transfer_family.has_value();
     }
 };
 inline auto find_queue_families(
@@ -510,7 +511,7 @@ inline auto create_graphics_pipeline(
     VkRenderPass render_pass,
     VkVertexInputBindingDescription
                  vi_binding_desc,
-    std::array< VkVertexInputAttributeDescription, 2 >
+    const std::vector< VkVertexInputAttributeDescription >&
                  vi_attr_desc
 ) {
     VkPipelineLayout pipeline_layout;
@@ -807,26 +808,31 @@ inline void copy_buffer(
 
 // Command pool and buffers
 //-----------------------------------------------------------------------------
-inline auto create_command_pool(
-    VkDevice         dev,
-    VkPhysicalDevice phys_dev,
-    VkSurfaceKHR     surface
+inline auto create_graphics_command_pool(
+    VkDevice                  dev,
+    const QueueFamilyIndices& qf_indices
 ) {
     VkCommandPool graphics_command_pool;
-    VkCommandPool transfer_command_pool;
-
-    const auto qf_indices = find_queue_families(phys_dev, surface);
 
     {
         VkCommandPoolCreateInfo ci {};
         ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         ci.queueFamilyIndex = qf_indices.graphics_family.value();
-        ci.flags = 0;
+        ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
 
         if(vkCreateCommandPool(dev, &ci, nullptr, &graphics_command_pool) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create command pool.");
+            throw std::runtime_error("Failed to create graphics command pool.");
         }
     }
+
+    return graphics_command_pool;
+}
+inline auto create_transfer_command_pool(
+    VkDevice                  dev,
+    const QueueFamilyIndices& qf_indices
+) {
+    VkCommandPool transfer_command_pool;
+
     {
         VkCommandPoolCreateInfo ci {};
         ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -834,74 +840,83 @@ inline auto create_command_pool(
         ci.flags = 0;
 
         if(vkCreateCommandPool(dev, &ci, nullptr, &transfer_command_pool) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create command pool.");
+            throw std::runtime_error("Failed to create transfer command pool.");
         }
     }
 
-    return std::tuple(graphics_command_pool, transfer_command_pool);
+    return transfer_command_pool;
 }
 
-inline auto create_command_buffers(
-    VkDevice      dev,
-    VkExtent2D    swap_chain_extent,
-    VkRenderPass  render_pass,
-    VkPipeline    graphics_pipeline,
-    const std::vector< VkFramebuffer >& swap_chain_framebuffers,
-    VkCommandPool command_pool,
-    VkBuffer      vertex_buffer,
-    std::size_t   num_vertices
+inline auto create_graphics_command_pools_and_buffers(
+    VkDevice                  dev,
+    const QueueFamilyIndices& qf_indices,
+    const std::vector< VkFramebuffer >& swap_chain_framebuffers
 ) {
-    std::vector< VkCommandBuffer > command_buffers(swap_chain_framebuffers.size());
+    const auto num_framebuffers = swap_chain_framebuffers.size();
+    std::vector< VkCommandPool > command_pools(num_framebuffers);
+    std::vector< VkCommandBuffer > command_buffers(num_framebuffers);
 
-    VkCommandBufferAllocateInfo ai {};
-    ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    ai.commandPool = command_pool;
-    ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    ai.commandBufferCount = command_buffers.size();
+    for(size_t i = 0; i < num_framebuffers; ++i) {
+        command_pools[i] = create_graphics_command_pool(dev, qf_indices);
 
-    if(vkAllocateCommandBuffers(dev, &ai, command_buffers.data()) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to allocate command buffers.");
-    }
+        VkCommandBufferAllocateInfo ai {};
+        ai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        ai.commandPool = command_pools[i];
+        ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        ai.commandBufferCount = 1;
 
-    for(size_t i = 0; i < command_buffers.size(); ++i) {
-        // Starting command buffer recording
-        VkCommandBufferBeginInfo cb_bi {};
-        cb_bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cb_bi.flags = 0;
-        cb_bi.pInheritanceInfo = nullptr;
-
-        if(vkBeginCommandBuffer(command_buffers[i], &cb_bi) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to begin recording command buffer.");
-        }
-
-        VkRenderPassBeginInfo rp_bi {};
-        rp_bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        rp_bi.renderPass = render_pass;
-        rp_bi.framebuffer = swap_chain_framebuffers[i];
-        rp_bi.renderArea.offset = {0, 0};
-        rp_bi.renderArea.extent = swap_chain_extent;
-
-        VkClearValue clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
-        rp_bi.clearValueCount = 1;
-        rp_bi.pClearValues = &clear_color;
-        vkCmdBeginRenderPass(command_buffers[i], &rp_bi, VK_SUBPASS_CONTENTS_INLINE);
-
-        vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-        VkBuffer vertex_buffers[] { vertex_buffer };
-        VkDeviceSize offsets[] { 0 };
-        vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-
-        vkCmdDraw(command_buffers[i], num_vertices, 1, 0, 0);
-
-        // End command buffer recording
-        vkCmdEndRenderPass(command_buffers[i]);
-        if(vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to record command buffer.");
+        if(vkAllocateCommandBuffers(dev, &ai, &command_buffers[i]) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to allocate command buffers.");
         }
     }
 
-    return command_buffers;
+    return std::tuple(command_pools, command_buffers);
+}
+
+inline void record_graphics_command_buffer(
+    VkExtent2D      swap_chain_extent,
+    VkRenderPass    render_pass,
+    VkPipeline      graphics_pipeline,
+    VkFramebuffer   framebuffer,
+    VkCommandBuffer command_buffer,
+    VkBuffer        vertex_buffer,
+    std::size_t     num_vertices
+) {
+    // Starting command buffer recording
+    VkCommandBufferBeginInfo cb_bi {};
+    cb_bi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cb_bi.flags = 0;
+    cb_bi.pInheritanceInfo = nullptr;
+
+    if(vkBeginCommandBuffer(command_buffer, &cb_bi) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to begin recording command buffer.");
+    }
+
+    VkRenderPassBeginInfo rp_bi {};
+    rp_bi.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    rp_bi.renderPass = render_pass;
+    rp_bi.framebuffer = framebuffer;
+    rp_bi.renderArea.offset = {0, 0};
+    rp_bi.renderArea.extent = swap_chain_extent;
+
+    VkClearValue clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    rp_bi.clearValueCount = 1;
+    rp_bi.pClearValues = &clear_color;
+    vkCmdBeginRenderPass(command_buffer, &rp_bi, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+
+    VkBuffer vertex_buffers[] { vertex_buffer };
+    VkDeviceSize offsets[] { 0 };
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+
+    vkCmdDraw(command_buffer, num_vertices, 1, 0, 0);
+
+    // End command buffer recording
+    vkCmdEndRenderPass(command_buffer);
+    if(vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to record command buffer.");
+    }
 }
 
 
@@ -910,12 +925,12 @@ inline auto create_command_buffers(
 template< std::size_t max_frames >
 inline auto create_sync_objs(
     VkDevice dev,
-    const std::vector< VkImage > swap_chain_images
+    std::size_t num_images
 ) {
     std::array< VkSemaphore, max_frames > image_available_semaphores;
     std::array< VkSemaphore, max_frames > render_finished_semaphores;
     std::array< VkFence, max_frames > in_flight_fences;
-    std::vector< VkFence > images_in_flight(swap_chain_images.size());
+    std::vector< VkFence > images_in_flight(num_images);
 
     VkSemaphoreCreateInfo ci {};
     ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
