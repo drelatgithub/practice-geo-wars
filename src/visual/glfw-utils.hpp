@@ -46,6 +46,12 @@ inline auto get_framebuffer_size(GLFWwindow* window) {
     return res;
 }
 
+// GLFW callback container
+struct CallbackContainer {
+    std::function< void(int key, int scancode, int action, int mods) >
+    key_callback;
+};
+
 } // namespace glfw_util
 } // namespace pgw
 

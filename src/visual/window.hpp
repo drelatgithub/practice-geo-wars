@@ -83,6 +83,11 @@ public:
         op_vertex_buffer_manager_.value().copy_data(vs);
     }
 
+    // Accessors
+    //---------------------------------
+    auto      & glfw_callbacks()       { return glfw_callbacks_; }
+    const auto& glfw_callbacks() const { return glfw_callbacks_; }
+
 private:
     static void callback_framebuffer_resize_(GLFWwindow* window, int width, int height) {
         auto p_window = static_cast< Window* >(glfwGetWindowUserPointer(window));
@@ -96,6 +101,17 @@ private:
         window_ = glfwCreateWindow(width, height, window_title, nullptr, nullptr);
         glfwSetWindowUserPointer(window_, this);
         glfwSetFramebufferSizeCallback(window_, callback_framebuffer_resize_);
+
+        // Set callbacks
+        glfwSetKeyCallback(
+            window_,
+            [](GLFWwindow* window, int key, int scancode, int action, int mods) -> void {
+                const auto pw = static_cast< Window* >(glfwGetWindowUserPointer(window));
+                if(const auto& cb = pw->glfw_callbacks_.key_callback) {
+                    cb(key, scancode, action, mods);
+                }
+            }
+        );
     }
 
     void glfw_destroy_() {
@@ -305,6 +321,8 @@ private:
 
     // GLFW window
     GLFWwindow*      window_ = nullptr;
+
+    glfw_util::CallbackContainer glfw_callbacks_;
 
     // Vulkan instance
     VkInstance       instance_;
