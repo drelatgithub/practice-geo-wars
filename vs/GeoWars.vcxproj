@@ -7,7 +7,6 @@
     <OutDir>$(SolutionDir)\build\$(MSBuildProjectName)-$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)\temp\$(MSBuildProjectName)-$(Platform)-$(Configuration)\</IntDir>
   </PropertyGroup>
-
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
@@ -55,7 +54,7 @@
       <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <ClCompile>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>

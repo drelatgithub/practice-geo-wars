@@ -3,7 +3,9 @@
 
 #include <chrono>
 #include <iostream>
+#include <numbers>
 
+#include "game/geo-wars/object.hpp"
 #include "visual/window.hpp"
 
 namespace pgw {
@@ -30,9 +32,17 @@ inline void run_game() {
 
         // Replace vertices
         if(vertices.size() == 3) {
-            vertices.push_back({{0.6f, -0.7f}, {1.0f, 0.0f, 0.0f}});
-            vertices.push_back({{0.65f, -0.65f}, {0.0f, 1.0f, 0.0f}});
-            vertices.push_back({{0.55f, -0.65f}, {0.0f, 0.0f, 0.0f}});
+            ShapeTransform jet_transform {
+                std::numbers::pi / 2,
+                { 50.0f, 50.0f },
+                { 100.0f, 100.0f }
+            };
+            build_shape_append(
+                vertices,
+                shape_jet,
+                jet_transform,
+                glm::vec3 { 1.0f, 1.0f, 0.7f }
+            );
         }
         else {
             vertices.resize(3);
@@ -42,7 +52,7 @@ inline void run_game() {
         static auto last_time = steady_clock::now();
         auto this_time = steady_clock::now();
         double fr = 1.0 / duration_cast<duration<double>>(this_time - last_time).count();
-        cout << "frame_rate=" << fr << endl;
+        // cout << "frame_rate=" << fr << endl;
         last_time = this_time;
     });
 }
