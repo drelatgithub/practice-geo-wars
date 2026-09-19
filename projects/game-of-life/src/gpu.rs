@@ -5,7 +5,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::grid::CellGrid;
+use crate::{grid::CellGrid, renderer::GridRenderer};
 
 pub(crate) struct GpuState {
     window: Arc<Window>,
@@ -15,7 +15,8 @@ pub(crate) struct GpuState {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    _grid: CellGrid,
+    renderer: GridRenderer,
+    grid: CellGrid,
 }
 
 impl GpuState {
@@ -59,6 +60,7 @@ impl GpuState {
             alpha_mode: capabilities.alpha_modes[0],
             view_formats: vec![],
         };
+        let renderer = GridRenderer::new(&device, surface_format, &grid);
 
         let state = Self {
             window,
@@ -68,7 +70,8 @@ impl GpuState {
             queue,
             surface,
             surface_config,
-            _grid: grid,
+            renderer,
+            grid,
         };
 
         state.configure_surface();
@@ -141,29 +144,13 @@ impl GpuState {
                 label: Some("clear screen encoder"),
             });
 
-        {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("clear screen pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.02,
-                            g: 0.03,
-                            b: 0.05,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-        }
+        self.renderer.encode(
+            &mut encoder,
+            &view,
+            self.surface_config.width,
+            self.surface_config.height,
+            self.grid.current_index(),
+        );
 
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();

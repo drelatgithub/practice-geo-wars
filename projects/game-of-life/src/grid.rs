@@ -7,8 +7,8 @@ const GLIDER: &[(u32, u32)] = &[(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
 pub(crate) struct CellGrid {
     width: u32,
     height: u32,
-    current: wgpu::Buffer,
-    next: wgpu::Buffer,
+    buffers: [wgpu::Buffer; 2],
+    current: usize,
 }
 
 impl CellGrid {
@@ -41,8 +41,8 @@ impl CellGrid {
         let grid = Self {
             width: GRID_WIDTH,
             height: GRID_HEIGHT,
-            current,
-            next,
+            buffers: [current, next],
+            current: 0,
         };
         grid.validate();
         grid
@@ -51,7 +51,24 @@ impl CellGrid {
     fn validate(&self) {
         let expected_buffer_size =
             u64::from(self.width) * u64::from(self.height) * std::mem::size_of::<u32>() as u64;
-        assert_eq!(self.current.size(), expected_buffer_size);
-        assert_eq!(self.next.size(), expected_buffer_size);
+        for buffer in &self.buffers {
+            assert_eq!(buffer.size(), expected_buffer_size);
+        }
+    }
+
+    pub(crate) fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub(crate) fn buffers(&self) -> &[wgpu::Buffer; 2] {
+        &self.buffers
+    }
+
+    pub(crate) fn current_index(&self) -> usize {
+        self.current
     }
 }

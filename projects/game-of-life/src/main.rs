@@ -10,6 +10,7 @@ use winit::{
 
 mod gpu;
 mod grid;
+mod renderer;
 
 #[derive(Default)]
 struct App {
