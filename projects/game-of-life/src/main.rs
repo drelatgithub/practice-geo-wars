@@ -10,6 +10,7 @@ use winit::{
 
 mod gpu;
 mod grid;
+mod kernel;
 mod renderer;
 
 #[derive(Default)]
@@ -57,6 +58,14 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => gpu.render(),
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let Some(gpu) = &mut self.gpu else {
+            return;
+        };
+
+        event_loop.set_control_flow(ControlFlow::WaitUntil(gpu.update()));
     }
 }
 

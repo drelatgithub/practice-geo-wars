@@ -1,11 +1,22 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use winit::{
     dpi::PhysicalSize,
     window::{Window, WindowId},
 };
 
-use crate::{grid::CellGrid, renderer::GridRenderer};
+use crate::{
+    grid::{CellGrid, GRID_HEIGHT, GRID_WIDTH, initial_cells},
+    kernel::Simulation,
+    renderer::GridRenderer,
+};
+
+const SIMULATION_INTERVAL: Duration = Duration::from_millis(10);
+const FRAME_INTERVAL: Duration = Duration::from_nanos(1_000_000_000 / 60);
+const MAX_CATCH_UP_STEPS: u32 = 8;
 
 pub(crate) struct GpuState {
     window: Arc<Window>,
@@ -13,10 +24,13 @@ pub(crate) struct GpuState {
     _adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    simulation: Simulation,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     renderer: GridRenderer,
     grid: CellGrid,
+    next_simulation: Instant,
+    next_frame: Instant,
 }
 
 impl GpuState {
@@ -39,7 +53,17 @@ impl GpuState {
             .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .expect("failed to create a wgpu device");
-        let grid = CellGrid::new(&device);
+        let initial_cells = initial_cells();
+        let grid = CellGrid::new(&device, &initial_cells);
+        let simulation = Simulation::new(
+            &instance,
+            &adapter,
+            &device,
+            &queue,
+            &initial_cells,
+            GRID_WIDTH,
+            GRID_HEIGHT,
+        );
 
         let size = window.inner_size();
         let capabilities = surface.get_capabilities(&adapter);
@@ -61,6 +85,7 @@ impl GpuState {
             view_formats: vec![],
         };
         let renderer = GridRenderer::new(&device, surface_format, &grid);
+        let now = Instant::now();
 
         let state = Self {
             window,
@@ -68,10 +93,13 @@ impl GpuState {
             _adapter: adapter,
             device,
             queue,
+            simulation,
             surface,
             surface_config,
             renderer,
             grid,
+            next_simulation: now + SIMULATION_INTERVAL,
+            next_frame: now + FRAME_INTERVAL,
         };
 
         state.configure_surface();
@@ -84,6 +112,43 @@ impl GpuState {
 
     pub(crate) fn request_redraw(&self) {
         self.window.request_redraw();
+    }
+
+    pub(crate) fn update(&mut self) -> Instant {
+        let now = Instant::now();
+        let mut steps = 0;
+
+        while now >= self.next_simulation && steps < MAX_CATCH_UP_STEPS {
+            self.next_simulation += SIMULATION_INTERVAL;
+            steps += 1;
+        }
+        if now >= self.next_simulation {
+            self.next_simulation = now + SIMULATION_INTERVAL;
+        }
+        if steps > 0 {
+            self.advance_simulation(steps);
+        }
+
+        if now >= self.next_frame {
+            self.window.request_redraw();
+            self.next_frame += FRAME_INTERVAL;
+            if now >= self.next_frame {
+                self.next_frame = now + FRAME_INTERVAL;
+            }
+        }
+
+        self.next_simulation.min(self.next_frame)
+    }
+
+    fn advance_simulation(&mut self, steps: u32) {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("simulation copy encoder"),
+            });
+        self.simulation
+            .advance_and_copy(steps, &mut encoder, self.grid.current_buffer());
+        self.queue.submit([encoder.finish()]);
     }
 
     fn configure_surface(&self) {

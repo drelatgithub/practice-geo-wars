@@ -1,8 +1,21 @@
 use wgpu::util::DeviceExt;
 
-const GRID_WIDTH: u32 = 128;
-const GRID_HEIGHT: u32 = 128;
+pub(crate) const GRID_WIDTH: u32 = 128;
+pub(crate) const GRID_HEIGHT: u32 = 128;
 const GLIDER: &[(u32, u32)] = &[(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
+
+pub(crate) fn initial_cells() -> Vec<u32> {
+    let mut cells = vec![0_u32; (GRID_WIDTH * GRID_HEIGHT) as usize];
+    let origin = (GRID_WIDTH / 2 - 1, GRID_HEIGHT / 2 - 1);
+
+    for &(offset_x, offset_y) in GLIDER {
+        let x = origin.0 + offset_x;
+        let y = origin.1 + offset_y;
+        cells[(y * GRID_WIDTH + x) as usize] = 1;
+    }
+
+    cells
+}
 
 pub(crate) struct CellGrid {
     width: u32,
@@ -12,24 +25,16 @@ pub(crate) struct CellGrid {
 }
 
 impl CellGrid {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let mut current_cells = vec![0_u32; (GRID_WIDTH * GRID_HEIGHT) as usize];
+    pub(crate) fn new(device: &wgpu::Device, current_cells: &[u32]) -> Self {
+        assert_eq!(current_cells.len(), (GRID_WIDTH * GRID_HEIGHT) as usize);
         let next_cells = vec![0_u32; current_cells.len()];
-        let origin = (GRID_WIDTH / 2 - 1, GRID_HEIGHT / 2 - 1);
-
-        for &(offset_x, offset_y) in GLIDER {
-            let x = origin.0 + offset_x;
-            let y = origin.1 + offset_y;
-            let index = (y * GRID_WIDTH + x) as usize;
-            current_cells[index] = 1;
-        }
 
         let usage = wgpu::BufferUsages::STORAGE
             | wgpu::BufferUsages::COPY_SRC
             | wgpu::BufferUsages::COPY_DST;
         let current = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("current cell grid"),
-            contents: bytemuck::cast_slice(&current_cells),
+            contents: bytemuck::cast_slice(current_cells),
             usage,
         });
         let next = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -70,5 +75,9 @@ impl CellGrid {
 
     pub(crate) fn current_index(&self) -> usize {
         self.current
+    }
+
+    pub(crate) fn current_buffer(&self) -> &wgpu::Buffer {
+        &self.buffers[self.current]
     }
 }
