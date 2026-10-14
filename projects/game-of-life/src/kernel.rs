@@ -37,6 +37,11 @@ fn game_of_life_kernel(current: &Array<u32>, next: &mut Array<u32>, width: u32, 
     }
 }
 
+#[cube(launch)]
+fn set_cell_kernel(cells: &mut Array<u32>, index: u32, value: u32) {
+    cells[index as usize] = value;
+}
+
 pub(crate) struct Simulation {
     client: CubeClient,
     buffers: [cubecl::server::Handle; 2],
@@ -135,6 +140,26 @@ impl Simulation {
         self.client
             .flush()
             .expect("failed to submit the simulation steps");
+    }
+
+    /// Writes `value` into one cell of the current grid.
+    pub(crate) fn set_cell(&self, x: u32, y: u32, value: u32) {
+        assert!((x as usize) < self.width && (y as usize) < self.height);
+        let cell_count = self.width * self.height;
+
+        // SAFETY: The handle is allocated for `cell_count` u32 values in `new`.
+        let cells =
+            unsafe { ArrayArg::from_raw_parts(self.buffers[self.current].clone(), cell_count) };
+        set_cell_kernel::launch::<CubeRuntime>(
+            &self.client,
+            CubeCount::Static(1, 1, 1),
+            CubeDim::new_1d(1),
+            cells,
+            y * self.width as u32 + x,
+            value,
+        );
+
+        self.client.flush().expect("failed to submit the cell edit");
     }
 }
 

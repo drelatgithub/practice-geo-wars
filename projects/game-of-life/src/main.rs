@@ -3,8 +3,9 @@ use std::{error::Error, sync::Arc};
 use gpu::GpuState;
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::{Key, NamedKey},
     window::{Window, WindowId},
 };
 
@@ -56,6 +57,20 @@ impl ApplicationHandler for App {
                 gpu.request_redraw();
             }
             WindowEvent::RedrawRequested => gpu.render(),
+            WindowEvent::CursorMoved { position, .. } => gpu.cursor_moved(position),
+            WindowEvent::CursorLeft { .. } => gpu.cursor_left(),
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => gpu.set_drawing(state.is_pressed()),
+            WindowEvent::KeyboardInput { event, .. }
+                if event.state.is_pressed()
+                    && !event.repeat
+                    && event.logical_key == Key::Named(NamedKey::Space) =>
+            {
+                gpu.toggle_pause()
+            }
             _ => {}
         }
     }

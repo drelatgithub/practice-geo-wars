@@ -8,7 +8,8 @@ The main purpose is to use Conway's Game of Life to explore GPU programming, esp
 4. Implement the Game-of-Life compute kernel with CubeCL and test it against small hand-computed patterns.
 5. Run CubeCL and rendering on the same `wgpu` device and queue.
 6. Render the current GPU simulation state.
-7. Add simulation controls and performance experiments.
+7. Edit the board with the mouse, one cell at a time: start with birth mode while the button is held, then add kill, flip, and randomize modes chosen with UI buttons.
+8. Add simulation controls and performance experiments.
 
 # Design decision
 

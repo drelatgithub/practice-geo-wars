@@ -4,14 +4,14 @@ use std::{
 };
 
 use winit::{
-    dpi::PhysicalSize,
+    dpi::{PhysicalPosition, PhysicalSize},
     window::{Window, WindowId},
 };
 
 use crate::{
     grid::{GRID_HEIGHT, GRID_WIDTH, initial_cells},
     kernel::Simulation,
-    renderer::GridRenderer,
+    renderer::{GridRenderer, grid_viewport},
 };
 
 const SIMULATION_INTERVAL: Duration = Duration::from_millis(10);
@@ -28,6 +28,9 @@ pub(crate) struct GpuState {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     renderer: GridRenderer,
+    cursor: Option<PhysicalPosition<f64>>,
+    drawing: bool,
+    paused: bool,
     next_simulation: Instant,
     next_frame: Instant,
 }
@@ -95,6 +98,9 @@ impl GpuState {
             surface,
             surface_config,
             renderer,
+            cursor: None,
+            drawing: false,
+            paused: false,
             next_simulation: now + SIMULATION_INTERVAL,
             next_frame: now + FRAME_INTERVAL,
         };
@@ -111,6 +117,39 @@ impl GpuState {
         self.window.request_redraw();
     }
 
+    pub(crate) fn cursor_moved(&mut self, position: PhysicalPosition<f64>) {
+        self.cursor = Some(position);
+    }
+
+    pub(crate) fn cursor_left(&mut self) {
+        self.cursor = None;
+    }
+
+    pub(crate) fn set_drawing(&mut self, drawing: bool) {
+        self.drawing = drawing;
+    }
+
+    pub(crate) fn toggle_pause(&mut self) {
+        self.paused = !self.paused;
+    }
+
+    /// The grid cell under `position`, or `None` outside the grid viewport.
+    fn cell_at(&self, position: PhysicalPosition<f64>) -> Option<(u32, u32)> {
+        let (viewport_x, viewport_y, viewport_size) =
+            grid_viewport(self.surface_config.width, self.surface_config.height);
+        let u = (position.x as f32 - viewport_x) / viewport_size;
+        let v = (position.y as f32 - viewport_y) / viewport_size;
+        if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+            return None;
+        }
+
+        let width = self.simulation.width();
+        let height = self.simulation.height();
+        let x = ((u * width as f32) as u32).min(width - 1);
+        let y = ((v * height as f32) as u32).min(height - 1);
+        Some((x, y))
+    }
+
     pub(crate) fn update(&mut self) -> Instant {
         let now = Instant::now();
         let mut steps = 0;
@@ -122,8 +161,16 @@ impl GpuState {
         if now >= self.next_simulation {
             self.next_simulation = now + SIMULATION_INTERVAL;
         }
-        if steps > 0 {
+        if steps > 0 && !self.paused {
             self.simulation.advance(steps);
+        }
+
+        // Birth mode: keep the cell under the cursor alive while the button is held.
+        if self.drawing
+            && let Some(position) = self.cursor
+            && let Some((x, y)) = self.cell_at(position)
+        {
+            self.simulation.set_cell(x, y, 1);
         }
 
         if now >= self.next_frame {

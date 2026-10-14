@@ -4,6 +4,14 @@ use wgpu::util::DeviceExt;
 
 use crate::kernel::Simulation;
 
+/// The square, centered region of the target that shows the grid, as `(x, y, size)` in pixels.
+pub(crate) fn grid_viewport(target_width: u32, target_height: u32) -> (f32, f32, f32) {
+    let size = target_width.min(target_height) as f32;
+    let x = (target_width as f32 - size) * 0.5;
+    let y = (target_height as f32 - size) * 0.5;
+    (x, y, size)
+}
+
 pub(crate) struct GridRenderer {
     pipeline: wgpu::RenderPipeline,
     bind_groups: [wgpu::BindGroup; 2],
@@ -149,9 +157,7 @@ impl GridRenderer {
             multiview_mask: None,
         });
 
-        let viewport_size = target_width.min(target_height) as f32;
-        let viewport_x = (target_width as f32 - viewport_size) * 0.5;
-        let viewport_y = (target_height as f32 - viewport_size) * 0.5;
+        let (viewport_x, viewport_y, viewport_size) = grid_viewport(target_width, target_height);
         render_pass.set_viewport(
             viewport_x,
             viewport_y,
