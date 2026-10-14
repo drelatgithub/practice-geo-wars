@@ -1,5 +1,7 @@
 use cubecl::prelude::*;
 
+use crate::patterns::Pattern;
+
 pub(crate) type CubeRuntime = cubecl::wgpu::WgpuRuntime;
 type CubeClient = ComputeClient<CubeRuntime>;
 
@@ -40,6 +42,29 @@ fn game_of_life_kernel(current: &Array<u32>, next: &mut Array<u32>, width: u32, 
 #[cube(launch)]
 fn set_cell_kernel(cells: &mut Array<u32>, index: u32, value: u32) {
     cells[index as usize] = value;
+}
+
+/// Copies `pattern` into the grid with its top-left corner at the origin, wrapping at the edges.
+/// Dead pattern cells clear the grid, so the whole bounding box matches the pattern.
+#[allow(clippy::too_many_arguments)]
+#[cube(launch)]
+fn stamp_kernel(
+    cells: &mut Array<u32>,
+    pattern: &Array<u32>,
+    pattern_width: u32,
+    pattern_height: u32,
+    origin_x: u32,
+    origin_y: u32,
+    width: u32,
+    height: u32,
+) {
+    let position = ABSOLUTE_POS as u32;
+
+    if position < pattern_width * pattern_height {
+        let x = (origin_x + position % pattern_width) % width;
+        let y = (origin_y + position / pattern_width) % height;
+        cells[(y * width + x) as usize] = pattern[position as usize];
+    }
 }
 
 pub(crate) struct Simulation {
@@ -160,6 +185,46 @@ impl Simulation {
         );
 
         self.client.flush().expect("failed to submit the cell edit");
+    }
+
+    /// Writes `pattern` into the current grid, centered on cell `(x, y)`.
+    pub(crate) fn stamp(&self, pattern: &Pattern, x: u32, y: u32) {
+        let width = self.width as u32;
+        let height = self.height as u32;
+        let pattern_width = pattern.width();
+        let pattern_height = pattern.height();
+        assert!(x < width && y < height);
+        assert!(pattern_width <= width && pattern_height <= height);
+
+        let pattern_cells = pattern.cells();
+        let pattern_count = pattern_cells.len();
+        let pattern_handle = self.client.create_from_slice(u32::as_bytes(&pattern_cells));
+        let origin_x = (x + width - pattern_width / 2) % width;
+        let origin_y = (y + height - pattern_height / 2) % height;
+
+        // SAFETY: The grid handle holds `width * height` u32 values (allocated in `new`), and
+        // the pattern handle was just created from `pattern_count` u32 values.
+        let cells = unsafe {
+            ArrayArg::from_raw_parts(self.buffers[self.current].clone(), self.width * self.height)
+        };
+        let pattern_arg = unsafe { ArrayArg::from_raw_parts(pattern_handle, pattern_count) };
+        let cube_count = pattern_count.div_ceil(CUBE_DIM as usize) as u32;
+
+        stamp_kernel::launch::<CubeRuntime>(
+            &self.client,
+            CubeCount::Static(cube_count, 1, 1),
+            CubeDim::new_1d(CUBE_DIM),
+            cells,
+            pattern_arg,
+            pattern_width,
+            pattern_height,
+            origin_x,
+            origin_y,
+            width,
+            height,
+        );
+
+        self.client.flush().expect("failed to submit the stamp");
     }
 }
 

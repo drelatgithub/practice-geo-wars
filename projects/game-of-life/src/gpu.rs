@@ -32,7 +32,9 @@ pub(crate) struct GpuState {
     renderer: GridRenderer,
     ui: Ui,
     cursor: Option<PhysicalPosition<f64>>,
-    drawing: bool,
+    mouse_down: bool,
+    /// Set on a press and handled once by the next `update`.
+    mouse_pressed: bool,
     paused: bool,
     next_simulation: Instant,
     next_frame: Instant,
@@ -104,7 +106,8 @@ impl GpuState {
             renderer,
             ui,
             cursor: None,
-            drawing: false,
+            mouse_down: false,
+            mouse_pressed: false,
             paused: false,
             next_simulation: now + SIMULATION_INTERVAL,
             next_frame: now + FRAME_INTERVAL,
@@ -135,8 +138,11 @@ impl GpuState {
         self.cursor = None;
     }
 
-    pub(crate) fn set_drawing(&mut self, drawing: bool) {
-        self.drawing = drawing;
+    pub(crate) fn set_mouse_down(&mut self, down: bool) {
+        if down && !self.mouse_down {
+            self.mouse_pressed = true;
+        }
+        self.mouse_down = down;
     }
 
     pub(crate) fn toggle_pause(&mut self) {
@@ -175,15 +181,21 @@ impl GpuState {
             self.simulation.advance(steps);
         }
 
-        // Birth mode: keep the cell under the cursor alive while the button is held.
-        if self.drawing
-            && self.ui.mouse_mode() == MouseMode::Birth
-            && !self.ui.is_pointer_over_ui()
-            && let Some(position) = self.cursor
-            && let Some((x, y)) = self.cell_at(position)
-        {
-            self.simulation.set_cell(x, y, 1);
+        let cell = self
+            .cursor
+            .filter(|_| !self.ui.is_pointer_over_ui())
+            .and_then(|position| self.cell_at(position));
+        if let Some((x, y)) = cell {
+            match self.ui.mouse_mode() {
+                // Keep the cell under the cursor alive while the button is held.
+                MouseMode::Birth if self.mouse_down => self.simulation.set_cell(x, y, 1),
+                MouseMode::Stamp if self.mouse_pressed => {
+                    self.simulation.stamp(self.ui.pattern(), x, y)
+                }
+                _ => {}
+            }
         }
+        self.mouse_pressed = false;
 
         if now >= self.next_frame {
             self.window.request_redraw();

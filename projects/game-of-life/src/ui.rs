@@ -1,11 +1,13 @@
 use winit::{event::WindowEvent, window::Window};
 
+use crate::patterns::{PATTERNS, Pattern};
+
 /// What a mouse press on the board does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MouseMode {
     /// Keep the cell under the cursor alive while the button is held.
     Birth,
-    /// Print a known pattern at the cursor on press. Not implemented yet.
+    /// Print the selected pattern centered on the cursor, once per press.
     Stamp,
 }
 
@@ -15,6 +17,8 @@ pub(crate) struct Ui {
     state: egui_winit::State,
     renderer: egui_wgpu::Renderer,
     mouse_mode: MouseMode,
+    /// Index into `PATTERNS` used by stamp mode.
+    pattern: usize,
 }
 
 impl Ui {
@@ -43,11 +47,16 @@ impl Ui {
             state,
             renderer,
             mouse_mode: MouseMode::Birth,
+            pattern: 0,
         }
     }
 
     pub(crate) fn mouse_mode(&self) -> MouseMode {
         self.mouse_mode
+    }
+
+    pub(crate) fn pattern(&self) -> &'static Pattern {
+        &PATTERNS[self.pattern]
     }
 
     /// Passes an event to egui. Returns `true` when egui used it, so the board should not.
@@ -74,6 +83,7 @@ impl Ui {
     ) -> Vec<wgpu::CommandBuffer> {
         let raw_input = self.state.take_egui_input(window);
         let mouse_mode = &mut self.mouse_mode;
+        let pattern = &mut self.pattern;
         let output = self.context.run_ui(raw_input, |ui| {
             egui::Window::new("Controls")
                 .resizable(false)
@@ -81,6 +91,15 @@ impl Ui {
                     ui.label("Mouse mode");
                     ui.radio_value(mouse_mode, MouseMode::Birth, "Birth");
                     ui.radio_value(mouse_mode, MouseMode::Stamp, "Stamp");
+                    if *mouse_mode == MouseMode::Stamp {
+                        egui::ComboBox::from_label("Pattern")
+                            .selected_text(PATTERNS[*pattern].name)
+                            .show_ui(ui, |ui| {
+                                for (index, candidate) in PATTERNS.iter().enumerate() {
+                                    ui.selectable_value(&mut *pattern, index, candidate.name);
+                                }
+                            });
+                    }
                     ui.separator();
                     ui.checkbox(paused, "Paused (Space)");
                 });

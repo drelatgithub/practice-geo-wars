@@ -12,6 +12,7 @@ use winit::{
 mod gpu;
 mod grid;
 mod kernel;
+mod patterns;
 mod renderer;
 mod ui;
 
@@ -67,7 +68,7 @@ impl ApplicationHandler for App {
                 state,
                 button: MouseButton::Left,
                 ..
-            } if !(ui_consumed && state.is_pressed()) => gpu.set_drawing(state.is_pressed()),
+            } if !(ui_consumed && state.is_pressed()) => gpu.set_mouse_down(state.is_pressed()),
             WindowEvent::KeyboardInput { event, .. }
                 if !ui_consumed
                     && event.state.is_pressed()
