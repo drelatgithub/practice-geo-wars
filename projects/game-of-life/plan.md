@@ -5,11 +5,10 @@ The main purpose is to use Conway's Game of Life to explore GPU programming, esp
 1. Create a Rust application with a `winit` window and event loop.
 2. Initialize `wgpu` and clear the window surface.
 3. Render a static grid of cells.
-4. Implement a small CPU simulation as a correctness reference.
-5. Implement and test the Game-of-Life compute kernel with CubeCL.
-6. Run CubeCL and rendering on the same `wgpu` device and queue.
-7. Render the current GPU simulation state.
-8. Add simulation controls and performance experiments.
+4. Implement the Game-of-Life compute kernel with CubeCL and test it against small hand-computed patterns.
+5. Run CubeCL and rendering on the same `wgpu` device and queue.
+6. Render the current GPU simulation state.
+7. Add simulation controls and performance experiments.
 
 # Design decision
 

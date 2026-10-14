@@ -9,7 +9,7 @@ use winit::{
 };
 
 use crate::{
-    grid::{CellGrid, GRID_HEIGHT, GRID_WIDTH, initial_cells},
+    grid::{GRID_HEIGHT, GRID_WIDTH, initial_cells},
     kernel::Simulation,
     renderer::GridRenderer,
 };
@@ -28,7 +28,6 @@ pub(crate) struct GpuState {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     renderer: GridRenderer,
-    grid: CellGrid,
     next_simulation: Instant,
     next_frame: Instant,
 }
@@ -54,7 +53,6 @@ impl GpuState {
             .await
             .expect("failed to create a wgpu device");
         let initial_cells = initial_cells();
-        let grid = CellGrid::new(&device, &initial_cells);
         let simulation = Simulation::new(
             &instance,
             &adapter,
@@ -84,7 +82,7 @@ impl GpuState {
             alpha_mode: capabilities.alpha_modes[0],
             view_formats: vec![],
         };
-        let renderer = GridRenderer::new(&device, surface_format, &grid);
+        let renderer = GridRenderer::new(&device, surface_format, &simulation);
         let now = Instant::now();
 
         let state = Self {
@@ -97,7 +95,6 @@ impl GpuState {
             surface,
             surface_config,
             renderer,
-            grid,
             next_simulation: now + SIMULATION_INTERVAL,
             next_frame: now + FRAME_INTERVAL,
         };
@@ -126,7 +123,7 @@ impl GpuState {
             self.next_simulation = now + SIMULATION_INTERVAL;
         }
         if steps > 0 {
-            self.advance_simulation(steps);
+            self.simulation.advance(steps);
         }
 
         if now >= self.next_frame {
@@ -138,17 +135,6 @@ impl GpuState {
         }
 
         self.next_simulation.min(self.next_frame)
-    }
-
-    fn advance_simulation(&mut self, steps: u32) {
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("simulation copy encoder"),
-            });
-        self.simulation
-            .advance_and_copy(steps, &mut encoder, self.grid.current_buffer());
-        self.queue.submit([encoder.finish()]);
     }
 
     fn configure_surface(&self) {
@@ -214,7 +200,7 @@ impl GpuState {
             &view,
             self.surface_config.width,
             self.surface_config.height,
-            self.grid.current_index(),
+            self.simulation.current_index(),
         );
 
         self.queue.submit([encoder.finish()]);

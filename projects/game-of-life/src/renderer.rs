@@ -1,6 +1,8 @@
+use std::num::NonZeroU64;
+
 use wgpu::util::DeviceExt;
 
-use crate::grid::CellGrid;
+use crate::kernel::Simulation;
 
 pub(crate) struct GridRenderer {
     pipeline: wgpu::RenderPipeline,
@@ -12,11 +14,16 @@ impl GridRenderer {
     pub(crate) fn new(
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
-        grid: &CellGrid,
+        simulation: &Simulation,
     ) -> Self {
         let dimensions = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("grid dimensions"),
-            contents: bytemuck::cast_slice(&[grid.width(), grid.height(), 0_u32, 0_u32]),
+            contents: bytemuck::cast_slice(&[
+                simulation.width(),
+                simulation.height(),
+                0_u32,
+                0_u32,
+            ]),
             usage: wgpu::BufferUsages::UNIFORM,
         });
 
@@ -46,14 +53,24 @@ impl GridRenderer {
             ],
         });
 
-        let bind_groups = grid.buffers().each_ref().map(|buffer| {
+        let cells_size = NonZeroU64::new(
+            u64::from(simulation.width())
+                * u64::from(simulation.height())
+                * std::mem::size_of::<u32>() as u64,
+        )
+        .expect("grid must not be empty");
+        let bind_groups = simulation.cell_buffers().map(|(buffer, offset)| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("grid bind group"),
                 layout: &bind_group_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: buffer.as_entire_binding(),
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &buffer,
+                            offset,
+                            size: Some(cells_size),
+                        }),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

@@ -75,6 +75,11 @@ impl Simulation {
         let current = client.create_from_slice(u32::as_bytes(initial_cells));
         let next = client.empty(std::mem::size_of_val(initial_cells));
 
+        // Submit the initial upload so it reaches the queue before the first render.
+        client
+            .flush()
+            .expect("failed to submit the initial CubeCL grid");
+
         Self {
             client,
             buffers: [current, next],
@@ -84,12 +89,35 @@ impl Simulation {
         }
     }
 
-    pub(crate) fn advance_and_copy(
-        &mut self,
-        steps: u32,
-        encoder: &mut wgpu::CommandEncoder,
-        destination: &wgpu::Buffer,
-    ) {
+    pub(crate) fn current_index(&self) -> usize {
+        self.current
+    }
+
+    pub(crate) fn width(&self) -> u32 {
+        self.width as u32
+    }
+
+    pub(crate) fn height(&self) -> u32 {
+        self.height as u32
+    }
+
+    /// The `wgpu` buffer and byte offset behind each grid handle, indexed like `current_index`.
+    /// The handles live in CubeCL's memory pool, so each one is a region of a shared buffer.
+    pub(crate) fn cell_buffers(&self) -> [(wgpu::Buffer, u64); 2] {
+        let byte_len = (self.width * self.height * std::mem::size_of::<u32>()) as u64;
+
+        self.buffers.each_ref().map(|handle| {
+            let resource = self
+                .client
+                .get_resource(handle.clone())
+                .expect("failed to access a CubeCL grid buffer");
+            let resource = resource.resource();
+            assert!(resource.size >= byte_len);
+            (resource.buffer.clone(), resource.offset)
+        })
+    }
+
+    pub(crate) fn advance(&mut self, steps: u32) {
         for _ in 0..steps {
             let next = 1 - self.current;
             launch_generation(
@@ -102,16 +130,11 @@ impl Simulation {
             self.current = next;
         }
 
-        let current = self
-            .client
-            .get_resource(self.buffers[self.current].clone())
-            .expect("failed to access the current CubeCL grid buffer");
-        let current = current.resource();
-        let byte_len = (self.width * self.height * std::mem::size_of::<u32>()) as u64;
-        assert!(current.size >= byte_len);
-        assert!(destination.size() >= byte_len);
-
-        encoder.copy_buffer_to_buffer(&current.buffer, current.offset, destination, 0, byte_len);
+        // CubeCL batches launches until flushed. Submit them now so they reach the shared
+        // queue before the next render reads the current buffer.
+        self.client
+            .flush()
+            .expect("failed to submit the simulation steps");
     }
 }
 
