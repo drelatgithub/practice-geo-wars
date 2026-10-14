@@ -48,9 +48,12 @@ fn fragment(input: VertexOutput) -> @location(0) vec4<f32> {
     let alive_color = vec3<f32>(0.55, 0.95, 0.65);
     let cell_color = select(dead_color, alive_color, is_alive);
 
-    let position_in_cell = fract(input.uv * vec2<f32>(dimensions));
-    let is_grid_line = position_in_cell.x < 0.06 || position_in_cell.y < 0.06;
-    let color = select(cell_color, cell_color * 0.45, is_grid_line);
+    // Grid lines are about one pixel wide at any cell size: dividing the distance to the
+    // nearest cell edge by `fwidth` converts it from cells to pixels.
+    let position = input.uv * vec2<f32>(dimensions);
+    let edge_distance = abs(fract(position - 0.5) - 0.5) / fwidth(position);
+    let line = 1.0 - clamp(min(edge_distance.x, edge_distance.y), 0.0, 1.0);
+    let color = mix(cell_color, cell_color * 0.45, line);
 
     return vec4<f32>(color, 1.0);
 }
