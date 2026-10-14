@@ -13,6 +13,7 @@ mod gpu;
 mod grid;
 mod kernel;
 mod renderer;
+mod ui;
 
 #[derive(Default)]
 struct App {
@@ -50,6 +51,8 @@ impl ApplicationHandler for App {
             return;
         }
 
+        let ui_consumed = gpu.ui_event(&event);
+
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(new_size) => {
@@ -59,13 +62,15 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => gpu.render(),
             WindowEvent::CursorMoved { position, .. } => gpu.cursor_moved(position),
             WindowEvent::CursorLeft { .. } => gpu.cursor_left(),
+            // A press on the UI must not start drawing, but a release always stops it.
             WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,
                 ..
-            } => gpu.set_drawing(state.is_pressed()),
+            } if !(ui_consumed && state.is_pressed()) => gpu.set_drawing(state.is_pressed()),
             WindowEvent::KeyboardInput { event, .. }
-                if event.state.is_pressed()
+                if !ui_consumed
+                    && event.state.is_pressed()
                     && !event.repeat
                     && event.logical_key == Key::Named(NamedKey::Space) =>
             {

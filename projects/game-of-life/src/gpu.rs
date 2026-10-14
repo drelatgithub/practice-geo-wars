@@ -5,6 +5,7 @@ use std::{
 
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
+    event::WindowEvent,
     window::{Window, WindowId},
 };
 
@@ -12,6 +13,7 @@ use crate::{
     grid::{GRID_HEIGHT, GRID_WIDTH, initial_cells},
     kernel::Simulation,
     renderer::{GridRenderer, grid_viewport},
+    ui::{MouseMode, Ui},
 };
 
 const SIMULATION_INTERVAL: Duration = Duration::from_millis(10);
@@ -28,6 +30,7 @@ pub(crate) struct GpuState {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     renderer: GridRenderer,
+    ui: Ui,
     cursor: Option<PhysicalPosition<f64>>,
     drawing: bool,
     paused: bool,
@@ -86,6 +89,7 @@ impl GpuState {
             view_formats: vec![],
         };
         let renderer = GridRenderer::new(&device, surface_format, &simulation);
+        let ui = Ui::new(&window, &device, surface_format);
         let now = Instant::now();
 
         let state = Self {
@@ -98,6 +102,7 @@ impl GpuState {
             surface,
             surface_config,
             renderer,
+            ui,
             cursor: None,
             drawing: false,
             paused: false,
@@ -115,6 +120,11 @@ impl GpuState {
 
     pub(crate) fn request_redraw(&self) {
         self.window.request_redraw();
+    }
+
+    /// Passes an event to the UI. Returns `true` when the UI used it, so the board should not.
+    pub(crate) fn ui_event(&mut self, event: &WindowEvent) -> bool {
+        self.ui.on_window_event(&self.window, event)
     }
 
     pub(crate) fn cursor_moved(&mut self, position: PhysicalPosition<f64>) {
@@ -167,6 +177,8 @@ impl GpuState {
 
         // Birth mode: keep the cell under the cursor alive while the button is held.
         if self.drawing
+            && self.ui.mouse_mode() == MouseMode::Birth
+            && !self.ui.is_pointer_over_ui()
             && let Some(position) = self.cursor
             && let Some((x, y)) = self.cell_at(position)
         {
@@ -239,7 +251,7 @@ impl GpuState {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("clear screen encoder"),
+                label: Some("frame encoder"),
             });
 
         self.renderer.encode(
@@ -249,8 +261,18 @@ impl GpuState {
             self.surface_config.height,
             self.simulation.current_index(),
         );
+        let ui_command_buffers = self.ui.encode(
+            &self.window,
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &view,
+            [self.surface_config.width, self.surface_config.height],
+            &mut self.paused,
+        );
 
-        self.queue.submit([encoder.finish()]);
+        self.queue
+            .submit(ui_command_buffers.into_iter().chain([encoder.finish()]));
         self.window.pre_present_notify();
         surface_texture.present();
     }
